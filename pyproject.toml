@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools>=61.2.0", "setuptools_scm[toml]>=3.4.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zut"
+authors = [{ name="Sébastien Hocquet", email="dev@ipamo.net" }]
+description = "Reusable Python utilities."
+readme = "README.md"
+keywords = ["reusable", "util", "utils", "common", "commons", "base", "flexout", "csv", "excel", "tabulate", "smb", "samba", "share", "out_table", "out_file", "db", "DbAdapter"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Libraries",
+]
+requires-python = ">=3.7.3"  # Debian 10 (Buster)
+dynamic = ["version"]
+dependencies = [
+    "typing-extensions; python_version < '3.8'",
+]
+
+[project.optional-dependencies]
+commons = [
+    "colorlog",
+    "tabulate",
+    "tzlocal; python_version < '3.9' or sys_platform == 'win32'",
+    "pytz; python_version < '3.9'",
+    "tzdata; python_version >= '3.9' and sys_platform == 'win32'",
+]
+
+excel = [
+    "openpyxl",
+    "defusedxml",
+]
+
+# For zut.files (when used on SMB shares on Linux, or on Windows for shares that are not accessible directly from the Windows filesystem)
+# NOTE: has many intermediate dependencies.
+smb = [
+    "smbprotocol",
+]
+
+# For zut.configure_logging
+# NOTE: requires `sudo apt install build-essential python3-dev pkg-config libsystemd-dev`.
+systemd = [
+    "systemd-python; sys_platform == 'linux'",
+]
+
+mssql = [
+    "pyodbc",
+    "sqlparse",
+    "sqlparams",
+]
+
+pg = [
+    "psycopg",
+    "sqlparse",
+]
+
+pg2 = [
+    "psycopg2",
+    "sqlparse",
+]
+
+[project.urls]
+Homepage = "https://github.com/ipamo/zut"
+"Bug Tracker" = "https://github.com/ipamo/zut/issues"
+
+[tool.setuptools]
+packages = ["zut"]
+
+[tool.setuptools.package-data]
+zut = ["db/sql-utils/*.sql"]
+
+[tool.setuptools_scm]
+write_to = "zut/_version.py"

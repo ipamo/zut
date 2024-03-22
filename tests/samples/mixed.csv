@@ -1,0 +1,7 @@
+﻿id;str0_col;str_col;bool_col;int_col;decimal_col
+1;X;a;True;1;1
+2;X;b;false;2;2.2
+3;X;c;1;3;3.33
+4;X;d;0;4;4.444
+5;X;"";;;
+6;X;;;;
