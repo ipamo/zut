@@ -167,7 +167,7 @@ def publish(path: str|Path, proxy: str = None):
     _ensure_installed('keyring_pass')
 
     print(f"{Color.YELLOW}Check{Color.RESET}")
-    _run(f'twine check {path}')
+    _run(f'twine check {path.as_posix()}')
 
     env = {**os.environ}
     if sys.platform != 'win32' and os.path.exists('/etc/ssl/certs/ca-certificates.crt'):
@@ -179,7 +179,7 @@ def publish(path: str|Path, proxy: str = None):
         env['HTTPS_PROXY'] = proxy
 
     print(f"{Color.YELLOW}Publish{Color.RESET}")
-    _run(f'twine upload {path}', env=env)
+    _run(f'twine upload {path.as_posix()}', env=env)
 
 def _add_arguments(parser: ArgumentParser):
     parser.add_argument('path')
