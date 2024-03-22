@@ -37,8 +37,7 @@ sqlparams
 
 # For zut.db.pg
 # Part of `zut[pg]` extra
-psycopg
+psycopg[binary]
 
 # For zut.db.pg2
-# Part of `zut[pg2]` extra
-psycopg2
+psycopg2-binary

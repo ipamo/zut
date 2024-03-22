@@ -58,11 +58,6 @@ pg = [
     "sqlparse",
 ]
 
-pg2 = [
-    "psycopg2",
-    "sqlparse",
-]
-
 [project.urls]
 Homepage = "https://github.com/ipamo/zut"
 "Bug Tracker" = "https://github.com/ipamo/zut/issues"
