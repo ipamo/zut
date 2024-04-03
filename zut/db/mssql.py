@@ -8,7 +8,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .. import build_url, skip_utf8_bom
+from .. import OutTable, build_url, skip_utf8_bom
 from .base import ColumnInfo, DbAdapter
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ try:
         # Execution
         #
         
-        def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: Cursor = None, results: bool|TextIOWrapper|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, encoding: str = 'utf-8') -> None:
+        def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: Cursor = None, results: bool|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, encoding: str = 'utf-8') -> None:
             import sqlparse  # not at the top because the enduser might not need this feature
 
             # Read file

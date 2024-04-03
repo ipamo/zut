@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Generic, Sequence, TypeVar
 from urllib.parse import ParseResult, quote, urlparse
 
-from .. import (Literal, build_url, hide_url_password, is_aware, make_aware,
+from .. import (Literal, OutTable, build_url, hide_url_password, is_aware, make_aware,
                 out_table, skip_utf8_bom)
 
 try:
@@ -221,7 +221,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         """
         pass
 
-    def execute_query(self, query: str, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|Literal['warning']|TextIOWrapper|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, query_id: str = None):
+    def execute_query(self, query: str, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|Literal['warning']|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, query_id: str = None):
         """
         - `results`:
             - If True, return results as a dict list.
@@ -279,18 +279,22 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
                         logger.warning("query%s returned %d row%s:\n%s", f" {query_id}" if query_id else "", row_count, "s" if row_count > 1 else "", text_rows)
                 return None
             
-            elif isinstance(results, (IOBase,str,Path)):
+            elif isinstance(results, (OutTable,IOBase,str,Path)):
                 # Write results as CSV to the given stream
                 columns = self.get_cursor_column_names(_cursor)
+
+                if isinstance(results, OutTable):
+                    o = results
+                    o.headers = columns
+                else:
+                    o = out_table(results, headers=columns, title=False, tablefmt='csv')
                 
-                with out_table(results, headers=columns, title=False, tablefmt='csv') as o:
-                    row_count = 0
+                with o:
                     for row in _cursor:
                         o.append(format_row(row))
-                        row_count += 1
                     
                     o.file.seek(0)
-                    return columns, row_count
+                    return columns, o.row_count
 
             elif results:
                 # Return results as a dict list
