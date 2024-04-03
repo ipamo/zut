@@ -4,7 +4,6 @@ Reusable Python utilities (top-level API).
 from __future__ import annotations
 
 import atexit
-from contextlib import nullcontext
 import csv
 import ctypes
 import inspect
@@ -15,11 +14,11 @@ import logging.config
 import os
 import re
 import socket
-from subprocess import CompletedProcess, SubprocessError
 import sys
 import unicodedata
 from argparse import ArgumentParser, RawTextHelpFormatter, _SubParsersAction
 from configparser import _UNSET, ConfigParser, RawConfigParser
+from contextlib import nullcontext
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from decimal import Decimal
 from enum import Enum, Flag
@@ -29,6 +28,7 @@ from importlib.util import find_spec
 from io import BufferedIOBase, IOBase, StringIO, TextIOBase, TextIOWrapper
 from ipaddress import AddressValueError, IPv4Address, IPv6Address, ip_address
 from pathlib import Path
+from subprocess import CompletedProcess, SubprocessError
 from textwrap import dedent
 from threading import Thread
 from traceback import format_exception
@@ -2076,8 +2076,10 @@ def check_completed_subprocess(cp: CompletedProcess, logger: logging.Logger = No
             return returncode != 0
     
 
-    def extract_stream(content: str|bytes, name: str, color: str):
-        if not isinstance(content, str):
+    def extract_stream(content: str|bytes|None, name: str, color: str):
+        if content is None:
+            return None
+        elif not isinstance(content, str):
             try:
                 content = content.decode('utf-8')
             except UnicodeDecodeError:
@@ -2519,7 +2521,7 @@ class ExitHandler(logging.Handler):
 def configure_smb_credentials(user: str = None, password: str = None):
     global _smb_credentials_configured
     
-    from zut.files import smbclient, _smb_credentials_configured
+    from zut.files import _smb_credentials_configured, smbclient
 
     if user or password:
         if not smbclient:
