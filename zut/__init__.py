@@ -1430,13 +1430,7 @@ class OutTable(OutFile):
         if self.db:
             self.out_name = self.db.get_url(hide_password=True)
 
-        self.headers: list[Header] = None  # for CSV, not None <=> export started
-        if headers:
-            self.headers = []
-            for header in headers:            
-                if not isinstance(header, Header):
-                    header = Header(str(header), dict_key=header)
-                self.headers.append(header)
+        self.headers: list[Header] = headers  # for CSV, not None <=> export started
 
         if self.db:
             if tablefmt and tablefmt != 'csv':
@@ -1485,6 +1479,14 @@ class OutTable(OutFile):
 
     def __enter__(self):
         super().__enter__()
+        
+        if self.headers: # ensure all headers are of type Header
+            actual_headers = []
+            for header in self.headers:            
+                if not isinstance(header, Header):
+                    header = Header(str(header), dict_key=header)
+                actual_headers.append(header)
+            self.headers = actual_headers
             
         if not self.out:
             pass
