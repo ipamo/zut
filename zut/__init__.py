@@ -67,14 +67,12 @@ except ImportError:
 
 try:
     import tzlocal
-
     # Used to parse timezones from strings on Windows (Windows does not maintain a database of timezones and `tzdata` only is not enough)
 except ImportError:
     tzlocal = None
 
 try:
     import pytz
-
     # Used to parse timezones on Python < 3.9 (no ZoneInfo available)
 except ImportError:
     pytz = None
@@ -764,12 +762,19 @@ class ExtendedJSONEncoder(json.JSONEncoder):
 
 #region Locale
 
-def register_locale(value: str = ''):
+def register_locale(value: str = '', *, use_excel_csv: bool = True):
+    """
+    Register locale (default locale if argument `value` is None).
+
+    - `use_excel_csv`: if True, use Excel-compatible version of CSV (which is localized) in OutTable by default.
+    """
     lang, encoding = locale.getlocale(locale.LC_NUMERIC)
     if lang:
         logger.warning("Locale already set: lang=%s, encoding=%s", lang, encoding)
 
     locale.setlocale(locale.LC_ALL, value)
+    if use_excel_csv:
+        OutTable.DEFAULT_CSV_FMT = 'csv-excel'
 
 
 def is_locale_registered(warn = False):
@@ -2240,8 +2245,8 @@ def get_description_text(docstring: str):
 
 _configs: dict[Path,ExtendedConfigParser] = {}
 
-def get_config(prog_module: ModuleType|str|Path, *, if_none: Literal['warn'] = None):
-    prog_root = _get_module_root(prog_module)
+def get_config(prog: ModuleType|str|Path, *, if_none: Literal['warn'] = None):
+    prog_root = _get_module_root(prog)
     config = _configs.get(prog_root)
 
     if config:
@@ -2263,8 +2268,8 @@ def get_config(prog_module: ModuleType|str|Path, *, if_none: Literal['warn'] = N
         return config
 
 
-def get_config_paths(prog_module: ModuleType|str|Path, name: str = None, *, if_exist: bool = False):
-    prog_root = _get_module_root(prog_module)
+def get_config_paths(prog: ModuleType|str|Path, name: str = None, *, if_exist: bool = False):
+    prog_root = _get_module_root(prog)
     prog_name = prog_root.name.replace('_', '-')
 
     if name is None:
