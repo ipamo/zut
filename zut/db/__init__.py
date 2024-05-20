@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from .base import DbAdapter, _get_connection_from_wrapper
 from .mssql import MssqlAdapter
+from .mysql import MysqlAdapter
 from .pg import PgAdapter
 from .pg2 import Pg2Adapter
 
@@ -26,8 +27,10 @@ def get_db_adapter(origin) -> DbAdapter:
                 adapter = Pg2Adapter
             else:
                 raise ValueError(f"PgAdapter and Pg2Adapter not available (psycopg missing)")
-        elif r.scheme in ['mssql']:
+        elif r.scheme in ['mssql', 'mssqls']:
             adapter = MssqlAdapter
+        elif r.scheme in ['mysql', 'mariadb']:
+            adapter = MysqlAdapter
         elif r.scheme:
             raise ValueError(f"unsupported db engine: {r.scheme}")
         else:
@@ -45,6 +48,8 @@ def get_db_adapter(origin) -> DbAdapter:
                 return PgAdapter(origin), None, None
             else:
                 return Pg2Adapter(origin), None, None
+        elif engine in ["django.db.backends.mysql", "django.contrib.gis.db.backends.mysql"]:
+            return MysqlAdapter(origin), None, None
         elif engine in ["mssql"]:
             return MssqlAdapter(origin), None, None
         else:
@@ -62,6 +67,8 @@ def get_db_adapter(origin) -> DbAdapter:
             return Pg2Adapter(origin), None, None
         elif type_fullname == 'psycopg.Connection':
             return PgAdapter(origin), None, None
+        elif type_fullname == 'MySQLdb.connections.Connection':
+            return MysqlAdapter(origin), None, None
         elif type_fullname == 'pyodbc.Connection':
             return MssqlAdapter(origin), None, None
 
@@ -69,6 +76,6 @@ def get_db_adapter(origin) -> DbAdapter:
 
 
 __all__ = (
-    'DbAdapter', 'MssqlAdapter', 'PgAdapter', 'Pg2Adapter',
+    'DbAdapter', 'MssqlAdapter', 'MysqlAdapter', 'PgAdapter', 'Pg2Adapter',
     'get_db_adapter',
 )

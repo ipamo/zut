@@ -16,6 +16,17 @@ Create postgresql test database (example):
 
 Configure tests with a `data/tests.conf` file (see [example](https://ipamo.net/zut/latest/_static/examples/tests.conf)).
 
+Start test databases using Docker:
+
+- PgAdapter :
+    
+    docker run -d --rm --name zut-tests-pg -e POSTGRES_PASSWORD=testme -e POSTGRES_DB=test_zut -p 127.0.0.1:5432:5432 postgres
+
+- MysqlAdapter :
+    
+    docker run -d --rm --name zut-tests-mysql -e MARIADB_ROOT_PASSWORD=testme -e MARIADB_DATABASE=test_zut -p 127.0.0.1:3306:3306 mariadb
+
+
 Run tests:
 
     python test.py

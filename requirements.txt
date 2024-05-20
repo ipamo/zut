@@ -27,8 +27,12 @@ defusedxml
 #systemd-python; sys_platform == 'linux'
 
 # For zut.db
-# Part of `zut[mssql]`, `zut[pg]` and `zut[pg2]` extras
+# Part of `zut[mssql]`, `zut[mysql]`, `zut[pg]` and `zut[pg2]` extras
 sqlparse
+
+# For zut.db.mysql
+# Part of `zut[mysql]` extra
+mysqlclient
 
 # For zut.db.mssql
 # Part of `zut[mssql]` extra

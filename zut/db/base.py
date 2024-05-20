@@ -235,32 +235,30 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         return query, params
     
     
-    def get_paginated_query(self, query: str, *, offset: int|None, limit: int|None) -> str:
-        paginated_query, _ = self.get_paginated_and_total_query(query, offset=offset, limit=limit)
+    def get_paginated_query(self, query: str, *, limit: int|None, offset: int|None) -> str:
+        paginated_query, _ = self.get_paginated_and_total_query(query, limit=limit, offset=offset)
         return paginated_query
     
 
-    def get_paginated_and_total_query(self, query: str, *, offset: int|None, limit: int|None) -> tuple[str,str]:
-        if offset is not None:
-            if isinstance(offset, str) and re.match(r"^[0-9]+$", offset):
-                offset = int(offset)
-            elif not isinstance(offset, int):
-                raise TypeError(f"invalid type for offset: {type(limit).__name__} (expected int)")
-        else:
-            offset = 0
-        
+    def get_paginated_and_total_query(self, query: str, *, limit: int|None, offset: int|None) -> tuple[str,str]:        
         if limit is not None:
             if isinstance(limit, str) and re.match(r"^[0-9]+$", limit):
                 limit = int(limit)
             elif not isinstance(limit, int):
-                raise TypeError(f"invalid type for limit: {type(limit).__name__} (expected int)")
+                raise TypeError(f"Invalid type for limit: {type(limit).__name__} (expected int)")
+            
+        if offset is not None:
+            if isinstance(offset, str) and re.match(r"^[0-9]+$", offset):
+                offset = int(offset)
+            elif not isinstance(offset, int):
+                raise TypeError(f"Invalid type for offset: {type(limit).__name__} (expected int)")
         
         beforepart, selectpart, orderpart = self._parse_select_query(query)
 
         paginated_query = beforepart
         total_query = beforepart
         
-        paginated_query += self._paginate_parsed_query(selectpart, orderpart, offset=offset, limit=limit)
+        paginated_query += self._paginate_parsed_query(selectpart, orderpart, limit=limit, offset=offset)
         total_query += f"SELECT COUNT(*) FROM ({selectpart}) s"
 
         return paginated_query, total_query
@@ -317,12 +315,12 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         return beforepart, selectpart, orderpart
     
 
-    def _paginate_parsed_query(self, selectpart: str, orderpart: str, *, offset: int, limit: int|None) -> str:
+    def _paginate_parsed_query(self, selectpart: str, orderpart: str, *, limit: int|None, offset: int|None) -> str:
         result = f"{selectpart} {orderpart}"
-        if offset > 0:
-            result += f" OFFSET {offset}"
         if limit is not None:
             result += f" LIMIT {limit}"
+        if offset is not None:
+            result += f" OFFSET {offset}"
         return result
     
 
@@ -360,7 +358,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
 
     #region Execution
 
-    def execute_query(self, query: str, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|Literal['warning']|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, query_id: str = None):
+    def execute_query(self, query: str, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|Literal['warning']|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, limit: int = None, offset: int = None, query_id: str = None):
         """
         - `results`:
             - If True, return results as a dict list.
@@ -369,8 +367,8 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
             - If a stream or a str/path, write results as CSV to the given stream and return tuple (columns, row_count)
         - `tz`: naive datetimes in results are made aware in the given timezone.
         """
-        if offset is not None or limit is not None:
-            query = self.get_paginated_query(query, offset=offset, limit=limit)
+        if limit is not None or offset is not None:
+            query = self.get_paginated_query(query, limit=limit, offset=offset)
                 
         # Example of positional param: cursor.execute("INSERT INTO foo VALUES (%s)", ["bar"])
         # Example of named param: cursor.execute("INSERT INTO foo VALUES (%(foo)s)", {"foo": "bar"})
@@ -451,12 +449,12 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         pass
 
 
-    def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|TextIOWrapper|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, encoding: str = 'utf-8') -> None:
+    def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|TextIOWrapper|str|Path = False, tz: tzinfo = None, limit: int = None, offset: int = None, encoding: str = 'utf-8') -> None:
         with open(path, 'r', encoding=encoding) as fp:
             skip_utf8_bom(fp)
             query = fp.read()
             
-        self.execute_query(query, params, cursor=cursor, results=results, tz=tz, offset=offset, limit=limit)
+        self.execute_query(query, params, cursor=cursor, results=results, tz=tz, limit=limit, offset=offset)
     
 
     def execute_procedure(self, name: str|tuple, *args) -> T_Cursor:
@@ -467,9 +465,9 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
 
     #region Results
 
-    def get_scalar(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+    def get_scalar(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):
         with self.cursor() as cursor:
-            self.execute_query(query, params, cursor=cursor, offset=offset, limit=limit)
+            self.execute_query(query, params, cursor=cursor, limit=limit, offset=offset)
 
             iterator = iter(cursor)
             try:
@@ -486,20 +484,20 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
             return row[0]
     
 
-    def get_scalars(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+    def get_scalars(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):
         results = []
 
         with self.cursor() as cursor:
-            self.execute_query(query, params, cursor=cursor, offset=offset, limit=limit)
+            self.execute_query(query, params, cursor=cursor, limit=limit, offset=offset)
             for row in cursor:
                 results.append(row[0])
 
         return results
 
 
-    def get_dict(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+    def get_dict(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):
         with self.cursor() as cursor:
-            self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
+            self.execute_query(query, params, limit=limit, offset=offset, cursor=cursor)
 
             iterator = iter(cursor)
             try:
@@ -517,26 +515,26 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
             return {columns[i]: value for i, value in enumerate(row)}
     
 
-    def get_result(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+    def get_result(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):
         cursor = self.cursor()
-        self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
+        self.execute_query(query, params, limit=limit, offset=offset, cursor=cursor)
         return CursorResult(self, cursor)
     
 
-    def iter_dicts(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):        
+    def iter_dicts(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):        
         with self.cursor() as cursor:
-            self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
+            self.execute_query(query, params, limit=limit, offset=offset, cursor=cursor)
             columns = self.get_cursor_column_names(cursor)
             for row in cursor:
                 yield {columns[i]: value for i, value in enumerate(row)}
+                
     
-    
-    def get_dicts(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):        
-        return [row for row in self.iter_dicts(query, params, offset=offset, limit=limit)]
+    def get_dicts(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):        
+        return [row for row in self.iter_dicts(query, params, limit=limit, offset=offset)]
     
 
-    def get_dicts_and_total(self, query: str, params: list|dict = None, *, offset: int, limit: int):        
-        paginated_query, total_query = self.get_paginated_and_total_query(query, offset=offset, limit=limit)
+    def get_dicts_and_total(self, query: str, params: list|dict = None, *, limit: int, offset: int):
+        paginated_query, total_query = self.get_paginated_and_total_query(query, limit=limit, offset=offset)
 
         rows = self.get_dicts(paginated_query, params)
         total = self.get_scalar(total_query, params)
@@ -610,15 +608,34 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         
 
     def _update_column_info(self, info: ColumnInfo, cursor: T_Cursor, index: int):
-        info.name = cursor.description[index]
+        info.name = cursor.description[index][0]
     
 
     def drop_table(self, table: str|tuple = None):
-        raise NotImplementedError()
+        schema, table = self.split_name(table)
+        
+        query = "DROP TABLE "
+            
+        if schema:    
+            query += f"{self.escape_identifier(schema)}."
+        query += f"{self.escape_identifier(table)}"
+
+        self.execute_query(query)
 
 
     def truncate_table(self, table: str|tuple = None, *, cascade: bool = False):
-        raise NotImplementedError()
+        schema, table = self.split_name(table)
+        
+        query = "TRUNCATE TABLE "
+            
+        if schema:    
+            query += f"{self.escape_identifier(schema)}."
+        query += f"{self.escape_identifier(table)}"
+
+        if cascade:
+            query += " CASCADE"
+
+        self.execute_query(query)
 
 
     def load_from_csv(self, file: os.PathLike|IOBase, table: str|tuple = None, *, columns: list[str] = None, encoding: str = 'utf-8', merge: Literal['truncate', 'truncate-cascade', 'upsert'] = None, noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None) -> int:
@@ -644,6 +661,7 @@ class ColumnInfo:
         self.name = None
         self.python_type: type = None
         self.sql_type: str = None
+        self.sql_typecode: int = None
         self.nullable: bool = None
         db._update_column_info(self, cursor, index)
 

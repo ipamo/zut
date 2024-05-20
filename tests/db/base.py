@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import date, datetime, time, timedelta
+from decimal import Decimal
 from unittest import SkipTest
 from urllib.parse import urlparse
 
-from tests import CONFIG
+from tests import CONFIG, SAMPLES_DIR
 from zut import ZUT_ROOT, slugify
-from zut.db import DbAdapter
+from zut.db import DbAdapter, PgAdapter, Pg2Adapter, MssqlAdapter, MysqlAdapter
+from zut.db.base import ColumnInfo
 
 
 class DbBase:
@@ -14,6 +17,17 @@ class DbBase:
     url: str
     db: DbAdapter
     mark: str
+
+    sql_types = {
+        'id': None,
+        'name': None,
+        'price': None,
+        'col_text': None,
+        'col_float': None,
+        'col_date': None,
+        'col_time': None,
+        'col_timestamp': None,
+    }
 
 
     @classmethod
@@ -43,7 +57,16 @@ class DbBase:
             cls.db.execute_file(sql_utils)
 
         cls.db.execute_query(f'DROP TABLE IF EXISTS {cls.mark}_tryout')
-        cls.db.execute_query(f'CREATE TABLE {cls.mark}_tryout (id BIGINT NOT NULL PRIMARY KEY, name TEXT NOT NULL, price DECIMAL(18,4) NULL, col_float FLOAT NULL, col_date DATE, col_time TIME, col_timestamp TIMESTAMP)')
+        cls.db.execute_query(f"""CREATE TABLE {cls.mark}_tryout (
+            id BIGINT NOT NULL PRIMARY KEY
+            ,name VARCHAR(100) NOT NULL
+            ,price DECIMAL(18,4) NULL
+            ,col_text TEXT NULL
+            ,col_float FLOAT NULL
+            ,col_date DATE
+            ,col_time TIME NULL
+            ,col_timestamp TIMESTAMP NOT NULL
+        )""")
 
 
     @classmethod
@@ -84,3 +107,128 @@ class DbBase:
 
         self.assertEqual(0, self.db.get_scalar("SELECT COUNT(*) FROM using_table"))
         self.assertEqual(0, self.db.get_scalar("SELECT COUNT(*) FROM ref_table"))
+
+
+    def test_get_table_columns(self):
+        expected = [
+            {'name': 'id', 'python_type': int, 'sql_type': self.sql_types['id'], 'nullable': False},
+            {'name': 'name', 'python_type': str, 'sql_type': self.sql_types['name'], 'nullable': False},
+            {'name': 'price', 'python_type': Decimal, 'sql_type': self.sql_types['price'], 'nullable': True},
+            {'name': 'col_text', 'python_type': str, 'sql_type': self.sql_types['col_text'], 'nullable': True},
+            {'name': 'col_float', 'python_type': float, 'sql_type': self.sql_types['col_float'], 'nullable': True},
+            {'name': 'col_date', 'python_type': date, 'sql_type': self.sql_types['col_date'], 'nullable': True},
+            {'name': 'col_time', 'python_type': timedelta if isinstance(self.db, MysqlAdapter) else time, 'sql_type': self.sql_types['col_time'], 'nullable': True},
+            {'name': 'col_timestamp', 'python_type': datetime, 'sql_type': self.sql_types['col_timestamp'], 'nullable': False},
+        ]
+
+        if isinstance(self.db, (PgAdapter, Pg2Adapter)):
+            # Cannot get 'nullable' from cursor
+            for ex in expected:
+                ex['nullable'] = None
+        elif isinstance(self.db, MssqlAdapter):
+            # Python type for 'timestamp' is 'bytearray'
+            for ex in expected:
+                if ex['name'] == 'col_timestamp':
+                    ex['python_type'] = bytearray
+
+        def get_actual_from_columninfo(info: ColumnInfo):
+            actual = {}
+            for key, value in info.__dict__.items():
+                if key not in ['sql_typecode']:
+                    actual[key] = value
+            return actual
+
+        self.assertEqual(expected, [get_actual_from_columninfo(info) for info in self.db.get_table_columns(f'{self.mark}_tryout')])
+
+
+    def test_load_csv_ordered(self):
+        if isinstance(self.db, MssqlAdapter):
+            raise SkipTest("TODO")
+
+        self.db.execute_query(
+            f"""
+            DROP TABLE IF EXISTS load_csv_ordered;
+
+            CREATE TABLE load_csv_ordered (
+                id int NOT NULL PRIMARY KEY
+                ,str0_col text NULL
+                ,str_col text NULL
+                ,bool_col {'bit' if isinstance(self.db, MssqlAdapter) else 'bool'} NULL
+                ,int_col int NULL
+                ,decimal_col decimal(5,3) NULL
+            )
+            """)
+
+        if isinstance(self.db, MssqlAdapter):
+            self.db.load_from_csv(SAMPLES_DIR.joinpath('mixed-noheaders.csv'), 'load_csv_ordered', merge='truncate', noheaders=True)
+        else:
+            self.db.load_from_csv(SAMPLES_DIR.joinpath('mixed-mysql.csv' if isinstance(self.db, MysqlAdapter) else 'mixed.csv'), 'load_csv_ordered', merge='truncate')
+
+        actual = self.db.get_dicts("SELECT * FROM load_csv_ordered")
+        self.assertEqual(actual, self._get_mixed_data())
+    
+
+    def test_load_csv_nonordered(self):
+        if isinstance(self.db, MssqlAdapter):
+            raise SkipTest("TODO")
+        if isinstance(self.db, MysqlAdapter):
+            raise SkipTest("TODO") # TODO: reordering actually does NOT work
+        
+        self.db.execute_query(
+            f"""
+            DROP TABLE IF EXISTS load_csv_nonordered;
+
+            CREATE TABLE load_csv_nonordered (
+                id int NOT NULL PRIMARY KEY
+                ,str_col text NULL
+                ,str0_col text NULL
+                ,bool_col {'bit' if isinstance(self.db, MssqlAdapter) else 'bool'} NULL
+                ,int_col int NULL
+                ,decimal_col decimal(5,3) NULL
+            )
+            """)
+
+        self.db.load_from_csv(SAMPLES_DIR.joinpath('mixed-mysql.csv' if isinstance(self.db, MysqlAdapter) else 'mixed.csv'), 'load_csv_nonordered', columns=['id', 'str0_col', 'str_col', 'bool_col', 'int_col', 'decimal_col'], merge='truncate')
+        
+        actual = self.db.get_dicts("SELECT * FROM load_csv_nonordered")
+        self.assertEqual(actual, self._get_mixed_data())
+
+
+    def test_load_csv_upsert(self):
+        if isinstance(self.db, MssqlAdapter):
+            raise SkipTest("TODO")
+        
+        self.db.execute_query(
+            f"""
+            DROP TABLE IF EXISTS load_csv_upsert;
+
+            CREATE TABLE load_csv_upsert (
+                id int NOT NULL PRIMARY KEY
+                ,str0_col text NULL
+                ,str_col text NULL
+                ,bool_col {'bit' if isinstance(self.db, MssqlAdapter) else 'bool'} NULL
+                ,int_col int NULL
+                ,decimal_col decimal(5,3) NULL
+            );
+
+            INSERT INTO load_csv_upsert (id, str0_col, str_col, bool_col, int_col, decimal_col)
+            VALUES
+                (1, 'OLD', 'a', {'1' if isinstance(self.db, MssqlAdapter) else 'true'}, 1, 1)
+                ,(7, 'KEEP', null, null, null, null);
+            """)
+
+        self.db.load_from_csv(SAMPLES_DIR.joinpath('mixed-mysql.csv' if isinstance(self.db, MysqlAdapter) else 'mixed.csv'), 'load_csv_upsert', merge='upsert')
+
+        actual = self.db.get_dicts("SELECT * FROM load_csv_upsert ORDER BY id")
+        self.assertEqual(actual, self._get_mixed_data() + [{'id': 7, 'str0_col': 'KEEP', 'str_col': None, 'bool_col': None,  'int_col': None, 'decimal_col': None}])
+
+
+    def _get_mixed_data(self):
+        return [
+            {'id': 1, 'str0_col': 'X', 'str_col': 'a',  'bool_col': 1 if isinstance(self.db, MysqlAdapter) else True, 'int_col': 1, 'decimal_col': Decimal('1')},
+            {'id': 2, 'str0_col': 'X', 'str_col': 'b',  'bool_col': 0 if isinstance(self.db, MysqlAdapter) else False, 'int_col': 2, 'decimal_col': Decimal('2.2')},
+            {'id': 3, 'str0_col': 'X', 'str_col': 'c',  'bool_col': 1 if isinstance(self.db, MysqlAdapter) else True,  'int_col': 3, 'decimal_col': Decimal('3.33')},
+            {'id': 4, 'str0_col': 'X', 'str_col': 'd',  'bool_col': 0 if isinstance(self.db, MysqlAdapter) else False, 'int_col': 4, 'decimal_col': Decimal('4.444')},
+            {'id': 5, 'str0_col': 'X', 'str_col': '',   'bool_col': None,  'int_col': None, 'decimal_col': None},
+            {'id': 6, 'str0_col': 'X', 'str_col': None, 'bool_col': None,  'int_col': None, 'decimal_col': None},
+        ]

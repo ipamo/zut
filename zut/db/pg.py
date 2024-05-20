@@ -251,7 +251,7 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
     def truncate_table(self, table: str|tuple = None, *, cascade: bool = False):
         schema, table = self.split_name(table)
         
-        query = "TRUNCATE "
+        query = "TRUNCATE TABLE "
         params = []
             
         if schema:    
@@ -268,12 +268,10 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
 
 
     def _update_column_info(self, info: ColumnInfo, cursor, index: int):
-        info.name, type_oid, display_size, internal_size, precision, scale, always_none = cursor.description[index]
-        type_info = OID_CATALOG.get(type_oid)
+        info.name, info.sql_typecode, _display_size, _internal_size, _precision, _scale, _nullok_alwaysnone = cursor.description[index]
+        type_info = OID_CATALOG.get(info.sql_typecode)
         if type_info:
             info.sql_type, info.python_type = type_info
-        else:
-            info.sql_type = type_oid
     
     #endregion
 
@@ -392,7 +390,7 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
             with nullcontext(file) if isinstance(file, IOBase) else open(file, "rb") as fp:
                 skip_utf8_bom(fp)
                 if tmp_tab:
-                    logger.debug("actual copy from %s to %s", file, tmp_tab)
+                    logger.debug("Actual copy from %s to %s", file, tmp_tab)
                 result_count = self._actual_copy(self._sql.SQL(sql).format(*params), fp)
             
             # Upsert from tmp table if necessary

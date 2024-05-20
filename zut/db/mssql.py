@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from contextlib import nullcontext
 from datetime import tzinfo
-from io import TextIOWrapper
+from io import IOBase, TextIOWrapper
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .. import OutTable, build_url, skip_utf8_bom
+from .. import OutTable, Literal, build_url, skip_utf8_bom, _get_csv_params
 from .base import ColumnInfo, DbAdapter
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ try:
         """
         Database adapter for Microsoft SQL Server (using `pyodbc` driver).
         """
-        URL_SCHEME = 'mssql'
+        URL_SCHEME = 'mssql' # or mssqls (if encrypted)
         DEFAULT_SCHEMA = 'dbo'
         ONLY_POSITIONAL_PARAMS = True
         EXPECTED_CONNECTION_TYPES = ['pyodbc.Connection']
@@ -76,7 +77,7 @@ try:
         # Execution
         #
         
-        def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: Cursor = None, results: bool|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, encoding: str = 'utf-8') -> None:
+        def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: Cursor = None, results: bool|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, limit: int = None, offset: int = None, encoding: str = 'utf-8') -> None:
             import sqlparse  # not at the top because the enduser might not need this feature
 
             # Read file
@@ -100,25 +101,25 @@ try:
                     query_id = f'{query_num}/{query_count}' if query_count > 1 else None
                     if query_num < query_count:
                         # Not last query: should not have results
-                        self.execute_query(query, params, cursor=_cursor, results='warning', tz=tz, query_id=query_id, offset=offset, limit=limit)
+                        self.execute_query(query, params, cursor=_cursor, results='warning', tz=tz, query_id=query_id, limit=limit, offset=offset)
 
                     else:
                         # Last query
-                        return self.execute_query(query, params, cursor=_cursor, results=results, tz=tz, query_id=query_id, offset=offset, limit=limit)
+                        return self.execute_query(query, params, cursor=_cursor, results=results, tz=tz, query_id=query_id, limit=limit, offset=offset)
 
 
         # -------------------------------------------------------------------------
         # Queries
         #
             
-        def _paginate_parsed_query(self, selectpart: str, orderpart: str, *, offset: int, limit: int|None) -> str:
+        def _paginate_parsed_query(self, selectpart: str, orderpart: str, *, limit: int|None, offset: int|None) -> str:
             if orderpart:
-                result = f"{selectpart} {orderpart} OFFSET {offset} ROWS"
+                result = f"{selectpart} {orderpart} OFFSET {offset or 0} ROWS"
                 if limit is not None:
                     result += f" FETCH NEXT {limit} ROWS ONLY"
                 return result
             elif limit is not None:
-                if offset > 0:
+                if offset is not None:
                     raise ValueError("an ORDER BY clause is required for OFFSET")
                 return f"SELECT TOP {limit} * FROM ({selectpart}) s"
             else:
@@ -171,25 +172,82 @@ try:
             query = "SELECT CASE WHEN EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?) THEN 1 ELSE 0 END"
             params = [schema, table]
 
-            return self.get_scalar(query, params)
-
-            
-        def drop_table(self, table: str|tuple = None):
-            schema, table = self.split_name(table)
-            query = "DROP TABLE %s.%s" % (schema, table)
-            self.execute_query(query)
+            return self.get_scalar(query, params) == 1
 
             
         def truncate_table(self, table: str|tuple = None, *, cascade: bool = False):
             if cascade:
-                raise ValueError("Cascade truncate not supported by mssql.")
-            schema, table = self.split_name(table)
-            query = "TRUNCATE TABLE %s.%s" % (schema, table)
-            self.execute_query(query)
+                raise ValueError("Cascade truncate is not supported by mssql.")
+            super().truncate_table(table)
             
 
         def _update_column_info(self, info: ColumnInfo, cursor: Cursor, index: int):
             info.name, info.python_type, display_size, internal_size, precision, scale, info.nullable = cursor.description[index]
+
+        #endregion
+
+
+        def load_from_csv(self, file: os.PathLike, table: str|tuple = None, *, columns: list[str] = None, encoding: str = 'utf-8', merge: Literal['truncate', 'truncate-cascade', 'upsert'] = None, noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None) -> int:
+            if isinstance(file, IOBase):
+                # TODO: use named pipes?
+                raise NotImplementedError("Cannot use IOBase file with mssql.")
+            if columns or not noheaders:
+                # TODO: compare CSV headers with columns (check consistency) + use named pipes?
+                raise NotImplementedError("Arguments 'columns' or 'noheaders' cannot be used yet.")
+
+            sche, tab = self.split_name(table)
+            tmp_tab: str = None
+            key_columns: list[str] = []
+            nonkey_target_columns: list[str] = []
+
+            _, csv_delimiter, csv_quotechar, csv_nullval = _get_csv_params(None, csv_delimiter, csv_quotechar, csv_nullval, context=file)
+            if csv_nullval != '':
+                raise ValueError(f"Invalid csv nullval for mssql: \"{csv_nullval}\"")
+
+            try:
+                if merge in ['truncate', 'truncate-cascade']:                
+                    self.truncate_table((sche, tab), cascade=merge == 'truncate-cascade')
+
+                elif merge == 'upsert':
+                    raise NotImplementedError("Cannot use 'upsert' yet") #TODO
+
+                # Prepare actual copy operation
+                sql = f"BULK INSERT "
+                    
+                if tmp_tab:
+                    sql += f"{self.escape_identifier(tmp_tab)}"
+                else:    
+                    if sche:    
+                        sql +=f"{self.escape_identifier(sche)}."
+                    sql += f"{self.escape_identifier(tab)}"
+
+                sql += f" FROM {self.escape_literal(os.path.abspath(file))}"
+                sql += f' WITH ('
+                sql += f' CODEPAGE = {self.escape_literal('utf-8' if encoding == 'utf-8-sig' else encoding)}'
+                sql += f', FIELDTERMINATOR = {self.escape_literal(csv_delimiter)}'
+                sql += f', FIELDQUOTE = {self.escape_literal(csv_quotechar)}'
+                if csv_nullval == '':
+                    sql += f', KEEPNULLS'
+                sql += ")"
+
+                if tmp_tab:
+                    logger.debug("Actual copy from %s to %s", file, tmp_tab)
+                
+                #TODO: skip_utf8_bom(fp)
+                with self.cursor() as cursor:
+                    self.execute_query(sql)
+                    result_count = cursor.rowcount
+                
+                # Upsert from tmp table if necessary
+                if tmp_tab:
+                    pass #TODO
+
+                return result_count
+
+            finally:
+                if tmp_tab:
+                    self.execute_query(f"DROP TABLE IF EXISTS {self.escape_identifier(tmp_tab)}")
+
 
 
 except ImportError:  
@@ -199,7 +257,7 @@ except ImportError:
         Database adapter for Microsoft SQL Server (using `pyodbc` driver).
         """
                 
-        URL_SCHEME = 'mssql'
+        URL_SCHEME = 'mssql' # or mssqls (if encrypted)
         DEFAULT_SCHEMA = 'dbo'
         ONLY_POSITIONAL_PARAMS = True
         EXPECTED_CONNECTION_TYPES = ['pyodbc.Connection']
