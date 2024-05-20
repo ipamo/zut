@@ -135,10 +135,10 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
             
         if schema:    
             query +="{}."
-            params += [self._escape_identifier(schema)]
+            params += [self.escape_identifier(schema)]
 
         query += "{}"
-        params += [self._escape_identifier(name)]
+        params += [self.escape_identifier(name)]
 
         query += "(" + ", ".join(['{}'] * len(args)) + ")"
         params += [self._get_composable_param(arg) for arg in args]
@@ -165,10 +165,10 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
             
         if schema:    
             query +="{}."
-            params += [self._escape_identifier(schema)]
+            params += [self.escape_identifier(schema)]
 
         query += "{}"
-        params += [self._escape_identifier(table)]
+        params += [self.escape_identifier(table)]
         
         if schema_only:
             query += ' WHERE false'
@@ -184,14 +184,14 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
         elif isinstance(value, self._sql.Composable):
             return value
         else:
-            return self._escape_literal(value)
+            return self.escape_literal(value)
         
 
-    def _escape_identifier(self, value):
+    def escape_identifier(self, value):
         return self._sql.Identifier(value)
     
 
-    def _escape_literal(self, value):
+    def escape_literal(self, value):
         return self._sql.Literal(value)
     
     #endregion
@@ -240,10 +240,10 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
             
         if schema:    
             query +="{}."
-            params += [self._escape_identifier(schema)]
+            params += [self.escape_identifier(schema)]
 
         query += "{}"
-        params += [self._escape_identifier(table)]
+        params += [self.escape_identifier(table)]
 
         self.execute_query(self._sql.SQL(query).format(*params))
         
@@ -256,10 +256,10 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
             
         if schema:    
             query +="{}."
-            params += [self._escape_identifier(schema)]
+            params += [self.escape_identifier(schema)]
 
         query += "{}"
-        params += [self._escape_identifier(table)]
+        params += [self.escape_identifier(table)]
 
         if cascade:
             query += " CASCADE"
@@ -366,24 +366,24 @@ class BasePgAdapter(DbAdapter[T_Connection, T_Cursor, T_Composable, T_Composed])
             sql = "COPY "; params = []
                 
             if tmp_tab:
-                sql += "{}"; params += [self._escape_identifier(tmp_tab)]
+                sql += "{}"; params += [self.escape_identifier(tmp_tab)]
             else:    
                 if sche:    
-                    sql +="{}."; params += [self._escape_identifier(sche)]
-                sql += "{}"; params += [self._escape_identifier(tab)]
+                    sql +="{}."; params += [self.escape_identifier(sche)]
+                sql += "{}"; params += [self.escape_identifier(tab)]
 
             if columns:
                 sql += " ("
                 for i, colinfo in enumerate(columns):
-                    sql += (", " if i > 0 else "") + "{}"; params += [self._escape_identifier(colinfo)]
+                    sql += (", " if i > 0 else "") + "{}"; params += [self.escape_identifier(colinfo)]
                 sql += ")"
 
             sql += " FROM STDIN (FORMAT csv"
-            sql += ', ENCODING {}'; params.append('utf-8' if encoding == 'utf-8-sig' else self._escape_literal(encoding))
-            sql += ', DELIMITER {}'; params.append(self._escape_literal(csv_delimiter))
-            sql += ', QUOTE {}'; params.append(self._escape_literal(csv_quotechar))            
-            sql += ', ESCAPE {}'; params.append(self._escape_literal(csv_quotechar))
-            sql += ', NULL {}'; params.append(self._escape_literal(csv_nullval))
+            sql += ', ENCODING {}'; params.append('utf-8' if encoding == 'utf-8-sig' else self.escape_literal(encoding))
+            sql += ', DELIMITER {}'; params.append(self.escape_literal(csv_delimiter))
+            sql += ', QUOTE {}'; params.append(self.escape_literal(csv_quotechar))            
+            sql += ', ESCAPE {}'; params.append(self.escape_literal(csv_quotechar))
+            sql += ', NULL {}'; params.append(self.escape_literal(csv_nullval))
                 
             if not noheaders:
                 sql += ", HEADER match"

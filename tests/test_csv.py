@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from io import StringIO
 from unittest import TestCase
-from zut import Header, dump_to_csv, list_dicts_from_csv, get_csv_headers, out_table, _is_semicolon_csv
+from zut import Header, dump_to_csv, get_dicts_from_csv, get_csv_headers, out_table, _is_semicolon_csv
 from tests import SAMPLES_DIR, RESULTS_DIR
 
 
@@ -31,7 +31,7 @@ class Case(TestCase):
     
 
     def test_load(self):
-        actual = list_dicts_from_csv(LaRoseSample.path, csv_nullval='■')
+        actual = get_dicts_from_csv(LaRoseSample.path, csv_nullval='■')
         expected = LaRoseSample.as_loaded_dicts()
         self.assertEqual(actual, expected)
 
@@ -40,7 +40,7 @@ class Case(TestCase):
         target = RESULTS_DIR.joinpath("test_load_LaRose.csv")
         dump_to_csv(target, LaRoseSample.data, headers=LaRoseSample.headers, csv_delimiter=';', csv_nullval='■', csv_decimal_separator=',')
 
-        actual = list_dicts_from_csv(target, csv_nullval='■')
+        actual = get_dicts_from_csv(target, csv_nullval='■')
         expected = LaRoseSample.as_loaded_dicts(decimal_separator=',')
         self.assertEqual(actual, expected)
     
@@ -54,7 +54,7 @@ class Case(TestCase):
         self.assertEqual(actual, expected)
 
         target.seek(0)
-        actual = list_dicts_from_csv(target, csv_nullval='■')
+        actual = get_dicts_from_csv(target, csv_nullval='■')
         expected = LaRoseSample.as_loaded_dicts(linesep='\n')
         self.assertEqual(actual, expected)
 
@@ -72,7 +72,7 @@ class Case(TestCase):
 
 
     def test_load_mixed(self):
-        actual = list_dicts_from_csv(MixedSample.path, headers=['*', Header('id', fmt=int), Header('bool_col', fmt=bool), Header('int_col', fmt=int), Header('decimal_col', fmt=Decimal)], csv_nullval='■')
+        actual = get_dicts_from_csv(MixedSample.path, headers=['*', Header('id', fmt=int), Header('bool_col', fmt=bool), Header('int_col', fmt=int), Header('decimal_col', fmt=Decimal)], csv_nullval='■')
         self.assertEqual(actual, MixedSample.data)
 
 

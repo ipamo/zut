@@ -48,7 +48,7 @@ class Case(DbBase, TestCase):
 
         self.db.load_from_csv(SAMPLES_DIR.joinpath('mixed.csv'), 'load_csv_ordered', merge='truncate')
 
-        actual = self.db.list_dicts("SELECT * FROM load_csv_ordered")
+        actual = self.db.get_dicts("SELECT * FROM load_csv_ordered")
         self.assertEqual(actual, MIXED_DATA)
     
 
@@ -69,7 +69,7 @@ class Case(DbBase, TestCase):
 
         self.db.load_from_csv(SAMPLES_DIR.joinpath('mixed.csv'), 'load_csv_nonordered', columns=['id', 'str0_col', 'str_col', 'bool_col', 'int_col', 'decimal_col'], merge='truncate')
         
-        actual = self.db.list_dicts("SELECT * FROM load_csv_nonordered")
+        actual = self.db.get_dicts("SELECT * FROM load_csv_nonordered")
         self.assertEqual(actual, MIXED_DATA)
 
 
@@ -86,7 +86,7 @@ class Case(DbBase, TestCase):
             logger.warning("Dummy warning") # Cannot use assertNoLogs for Python < 3.10
             self.assertEqual(1, len(cm.records))
 
-        actual = self.db.list_dicts(f"SELECT col_notnull, col_nullable, col_decimal, col_timestamp FROM {self.mark}_out_table1")
+        actual = self.db.get_dicts(f"SELECT col_notnull, col_nullable, col_decimal, col_timestamp FROM {self.mark}_out_table1")
         self.assertEqual(actual, [
             {'col_notnull': 'A', 'col_nullable': '', 'col_decimal': Decimal('1.23456789'), 'col_timestamp': dt},
             {'col_notnull': 'B', 'col_nullable': None, 'col_decimal': None, 'col_timestamp': None},
@@ -106,7 +106,7 @@ class Case(DbBase, TestCase):
             self.assertEqual(1, len(cm.records))
 
 
-        actual = self.db.list_dicts(f"SELECT col_notnull, col_nullable, col_decimal FROM {self.mark}_out_table2")
+        actual = self.db.get_dicts(f"SELECT col_notnull, col_nullable, col_decimal FROM {self.mark}_out_table2")
         self.assertEqual(actual, [
             {'col_notnull': 'A', 'col_nullable': '', 'col_decimal': Decimal('1.23456789')},
             {'col_notnull': 'B', 'col_nullable': None, 'col_decimal': None},

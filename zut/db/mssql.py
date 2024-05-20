@@ -128,22 +128,22 @@ try:
         def get_select_table_query(self, table: str|tuple = None, *, schema_only = False) -> str:
             schema, table = self.split_name(table)
             
-            query = f'SELECT * FROM {self._escape_identifier(schema)}.{self._escape_identifier(table)}'
+            query = f'SELECT * FROM {self.escape_identifier(schema)}.{self.escape_identifier(table)}'
             if schema_only:
                 query += ' WHERE 1 = 0'
 
             return query
             
 
-        def _escape_identifier(self, value: str) -> str:
+        def escape_identifier(self, value: str) -> str:
             return f"[{value.replace(']', ']]')}]"
         
 
-        def _escape_literal(self, value: str) -> str:
+        def escape_literal(self, value: str) -> str:
             return f"'" + value.replace("'", "''") + "'"
 
 
-        def _log_cursor_messages(self, cursor: Cursor):
+        def _log_execute_messages(self, cursor: Cursor):
             if cursor.messages:
                 for msg_type, msg_text in cursor.messages:
                     m = re.match(r"^\[Microsoft\]\[ODBC Driver \d+ for SQL Server\]\[SQL Server\](.+)$", msg_text)

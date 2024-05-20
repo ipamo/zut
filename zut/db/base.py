@@ -52,7 +52,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         raise NotImplementedError()
     
 
-    def __init__(self, origin: T_Connection|str|dict|ParseResult, autocommit: bool = True, tz: tzinfo = None):
+    def __init__(self, origin: T_Connection|str|dict|ParseResult, password_required: bool = False, autocommit: bool = True, tz: tzinfo = None):
         """
         Create a new adapter.
         - `origin`: an existing connection object, or the URL or django alias (e.g. 'default') for the new connection to create by the adapter.
@@ -154,41 +154,10 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
             self._connection_url: str = None
             self._must_close_connection = False
         
-        self.autocommit: bool = autocommit
+        self.password_required = password_required
+        self.autocommit = autocommit
         self.tz = tz
-
-
-    def __enter__(self):
-        return self
-
-
-    def __exit__(self, exc_type = None, exc_val = None, exc_tb = None):
-        self.close()
-
-
-    def close(self):
-        if self._connection and self._must_close_connection:
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"close %s (%s) connection to %s", type(self).__name__, type(self._connection).__module__ + '.' + type(self._connection).__qualname__, hide_url_password(self._connection_url))
-            self._connection.close()
-
-
-    @property
-    def connection(self):
-        if not self._connection:                
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(f"create %s connection to %s", type(self).__name__, hide_url_password(self._connection_url))
-            self._connection = self._create_connection()
-        return self._connection
-
-
-    def cursor(self) -> T_Cursor:
-        return self.connection.cursor()
-
-
-    def _create_connection(self) -> T_Connection:
-        raise NotImplementedError()
-
+    
 
     def get_url(self, *, hide_password = False):
         if self._connection_url:
@@ -211,193 +180,47 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
 
     def _get_url_from_connection(self):
         raise NotImplementedError()
-    
-
-    #region Execution
-
-    def _log_cursor_messages(self, cursor: T_Cursor):
-        """
-        Log cursor messages produced after execution of a query, if this cannot be done through a connection handler.
-        """
-        pass
-
-    def execute_query(self, query: str, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|Literal['warning']|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, query_id: str = None):
-        """
-        - `results`:
-            - If True, return results as a dict list.
-            - If False, ignore results.
-            - If `warning`, produce a warning log if there is results.
-            - If a stream or a str/path, write results as CSV to the given stream and return tuple (columns, row_count)
-        - `tz`: naive datetimes in results are made aware in the given timezone.
-        """
-        if offset is not None or limit is not None:
-            query = self.get_paginated_query(query, offset=offset, limit=limit)
-                
-        # Example of positional param: cursor.execute("INSERT INTO foo VALUES (%s)", ["bar"])
-        # Example of named param: cursor.execute("INSERT INTO foo VALUES (%(foo)s)", {"foo": "bar"})
-        if params is None:
-            params = []
-        elif isinstance(params, dict) and self.ONLY_POSITIONAL_PARAMS:
-            query, params = self.to_positional_params(query, params)
-
-        with nullcontext(cursor) if cursor else self.cursor() as _cursor:            
-            # Execute query
-            _cursor.execute(query, params)
-            self._log_cursor_messages(_cursor)
-
-            # Log number of affected rows for non-select queries
-            if not _cursor.description and _cursor.rowcount >= 0:
-                logger.debug(f"affected rows: {_cursor.rowcount:,}")
-
-            def format_row(row):
-                if tz or self.tz:
-                    for i, value in enumerate(row):
-                        if isinstance(value, (datetime,time)):
-                            if not is_aware(value):
-                                row[i] = make_aware(value, tz or self.tz)
-                return row
-            
-            # Handle results
-            if results == 'warning':
-                if _cursor.description:
-                    rows = [row for row in _cursor]                    
-                    row_count = len(rows)
-                    if row_count > 0:
-                        columns = self.get_cursor_column_names(_cursor)
-
-                        if tabulate:
-                            text_rows = tabulate(rows[0:10], headers=columns)
-                        else:
-                            fp = StringIO()
-                            with out_table(fp, headers=columns) as o:
-                                for row in rows[0:10]:
-                                    o.append(row)
-                            text_rows = fp.getvalue()
-
-                        if row_count > 10:
-                            text_rows += "\n…"
-                        logger.warning("query%s returned %d row%s:\n%s", f" {query_id}" if query_id else "", row_count, "s" if row_count > 1 else "", text_rows)
-                return None
-            
-            elif isinstance(results, (OutTable,IOBase,str,Path)):
-                # Write results as CSV to the given stream
-                columns = self.get_cursor_column_names(_cursor)
-
-                if isinstance(results, OutTable):
-                    o = results
-                    o.headers = columns
-                else:
-                    o = out_table(results, headers=columns, title=False, tablefmt='csv')
-                
-                with o:
-                    for row in _cursor:
-                        o.append(format_row(row))
-                    
-                    o.file.seek(0)
-                    return columns, o.row_count
-
-            elif results:
-                # Return results as a dict list
-                columns = self.get_cursor_column_names(_cursor)
-                return [{columns[i]: value for i, value in enumerate(format_row(row))} for row in _cursor]
-            
-            else:
-                return None
 
 
-    def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|TextIOWrapper|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, encoding: str = 'utf-8') -> None:
-        with open(path, 'r', encoding=encoding) as fp:
-            skip_utf8_bom(fp)
-            query = fp.read()
-            
-        self.execute_query(query, params, cursor=cursor, results=results, tz=tz, offset=offset, limit=limit)
-    
+    #region Connection
 
-    def execute_procedure(self, name: str|tuple, *args) -> T_Cursor:
-        return NotImplementedError()
-    
-    #endregion
+    def __enter__(self):
+        return self
 
 
-    #region Particular types of results
-
-    def get_scalar(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
-        with self.cursor() as cursor:
-            self.execute_query(query, params, cursor=cursor, offset=offset, limit=limit)
-
-            iterator = iter(cursor)
-            try:
-                row = next(iterator)
-            except StopIteration:
-                raise NotFoundError()
-
-            try:
-                next(iterator)
-                raise SeveralFoundError()
-            except StopIteration:
-                pass
-
-            return row[0]
-    
-
-    def list_scalars(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
-        results = []
-
-        with self.cursor() as cursor:
-            self.execute_query(query, params, cursor=cursor, offset=offset, limit=limit)
-            for row in cursor:
-                results.append(row[0])
-
-        return results
+    def __exit__(self, exc_type = None, exc_val = None, exc_tb = None):
+        self.close()
 
 
-    def get_dict(self, query: str, params: list|tuple|dict = None):
-        with self.cursor() as cursor:
-            self.execute_query(query, params, cursor=cursor)
+    def close(self):
+        if self._connection and self._must_close_connection:
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Close %s (%s) connection to %s", type(self).__name__, type(self._connection).__module__ + '.' + type(self._connection).__qualname__, hide_url_password(self._connection_url))
+            self._connection.close()
 
-            iterator = iter(cursor)
-            try:
-                row = next(iterator)
-            except StopIteration:
-                raise NotFoundError()
 
-            try:
-                next(iterator)
-                raise SeveralFoundError()
-            except StopIteration:
-                pass
+    @property
+    def connection(self):
+        if not self._connection:                
+            if self.password_required:
+                password = urlparse(self._connection_url).password
+                if not password:
+                    raise ValueError("Cannot create %s connection to %s: password not provided" % (type(self).__name__, hide_url_password(self._connection_url)))
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Create %s connection to %s", type(self).__name__, hide_url_password(self._connection_url))
+            self._connection = self._create_connection()
+        return self._connection
 
-            columns = self.get_cursor_column_names(cursor)
-            return {columns[i]: value for i, value in enumerate(row)}
-    
 
-    def get_result(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
-        cursor = self.cursor()
-        self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
-        return CursorResult(self, cursor)
-    
+    def _create_connection(self) -> T_Connection:
+        raise NotImplementedError()
 
-    def get_dicts(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):        
-        with self.cursor() as cursor:
-            self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
-            columns = self.get_cursor_column_names(cursor)
-            for row in cursor:
-                yield {columns[i]: value for i, value in enumerate(row)}
-    
-    
-    def list_dicts(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):        
-        return [row for row in self.get_dicts(query, params, offset=offset, limit=limit)]
-    
 
-    def list_paginated_dicts(self, query: str, params: list|dict = None, *, offset: int, limit: int):        
-        paginated_query, total_query = self.get_paginated_and_total_query(query, offset=offset, limit=limit)
-
-        rows = self.list_dicts(paginated_query, params)
-        total = self.get_scalar(total_query, params)
-        return {"rows": rows, "total": total}
+    def cursor(self) -> T_Cursor:
+        return self.connection.cursor()
 
     #endregion
-
+    
 
     #region Queries
 
@@ -522,18 +345,205 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         elif value == '__now__':
             return "CURRENT_DATETIME()"
         else:
-            return self._escape_literal(value)
+            return self.escape_literal(value)
                 
 
-    def _escape_identifier(self, value) -> T_Composable:
+    def escape_identifier(self, value) -> T_Composable:
         raise NotImplementedError()
                 
 
-    def _escape_literal(self, value) -> T_Composable:
+    def escape_literal(self, value) -> T_Composable:
         raise NotImplementedError()
     
     #endregion
     
+
+    #region Execution
+
+    def execute_query(self, query: str, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|Literal['warning']|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, query_id: str = None):
+        """
+        - `results`:
+            - If True, return results as a dict list.
+            - If False, ignore results.
+            - If `warning`, produce a warning log if there is results.
+            - If a stream or a str/path, write results as CSV to the given stream and return tuple (columns, row_count)
+        - `tz`: naive datetimes in results are made aware in the given timezone.
+        """
+        if offset is not None or limit is not None:
+            query = self.get_paginated_query(query, offset=offset, limit=limit)
+                
+        # Example of positional param: cursor.execute("INSERT INTO foo VALUES (%s)", ["bar"])
+        # Example of named param: cursor.execute("INSERT INTO foo VALUES (%(foo)s)", {"foo": "bar"})
+        if params is None:
+            params = []
+        elif isinstance(params, dict) and self.ONLY_POSITIONAL_PARAMS:
+            query, params = self.to_positional_params(query, params)
+
+        with nullcontext(cursor) if cursor else self.cursor() as _cursor:            
+            # Execute query
+            _cursor.execute(query, params)
+            self._log_execute_messages(_cursor)
+
+            # Log number of affected rows for non-select queries
+            if not _cursor.description and _cursor.rowcount >= 0:
+                logger.debug(f"Affected rows: {_cursor.rowcount:,}")
+
+            def format_row(row):
+                if tz or self.tz:
+                    for i, value in enumerate(row):
+                        if isinstance(value, (datetime,time)):
+                            if not is_aware(value):
+                                row[i] = make_aware(value, tz or self.tz)
+                return row
+            
+            # Handle results
+            if results == 'warning':
+                if _cursor.description:
+                    rows = [row for row in _cursor]                    
+                    row_count = len(rows)
+                    if row_count > 0:
+                        columns = self.get_cursor_column_names(_cursor)
+
+                        if tabulate:
+                            text_rows = tabulate(rows[0:10], headers=columns)
+                        else:
+                            fp = StringIO()
+                            with out_table(fp, headers=columns) as o:
+                                for row in rows[0:10]:
+                                    o.append(row)
+                            text_rows = fp.getvalue()
+
+                        if row_count > 10:
+                            text_rows += "\n…"
+                        logger.warning("query%s returned %d row%s:\n%s", f" {query_id}" if query_id else "", row_count, "s" if row_count > 1 else "", text_rows)
+                return None
+            
+            elif isinstance(results, (OutTable,IOBase,str,Path)):
+                # Write results as CSV to the given stream
+                columns = self.get_cursor_column_names(_cursor)
+
+                if isinstance(results, OutTable):
+                    o = results
+                    o.headers = columns
+                else:
+                    o = out_table(results, headers=columns, title=False, tablefmt='csv')
+                
+                with o:
+                    for row in _cursor:
+                        o.append(format_row(row))
+                    
+                    o.file.seek(0)
+                    return columns, o.row_count
+
+            elif results:
+                # Return results as a dict list
+                columns = self.get_cursor_column_names(_cursor)
+                return [{columns[i]: value for i, value in enumerate(format_row(row))} for row in _cursor]
+            
+            else:
+                return None
+
+
+    def _log_execute_messages(self, cursor: T_Cursor):
+        """
+        Log messages produced during execution of a query, if this cannot be done through a connection handler.
+        """
+        pass
+
+
+    def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: T_Cursor = None, results: bool|TextIOWrapper|str|Path = False, tz: tzinfo = None, offset: int = None, limit: int = None, encoding: str = 'utf-8') -> None:
+        with open(path, 'r', encoding=encoding) as fp:
+            skip_utf8_bom(fp)
+            query = fp.read()
+            
+        self.execute_query(query, params, cursor=cursor, results=results, tz=tz, offset=offset, limit=limit)
+    
+
+    def execute_procedure(self, name: str|tuple, *args) -> T_Cursor:
+        return NotImplementedError()
+    
+    #endregion
+
+
+    #region Results
+
+    def get_scalar(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+        with self.cursor() as cursor:
+            self.execute_query(query, params, cursor=cursor, offset=offset, limit=limit)
+
+            iterator = iter(cursor)
+            try:
+                row = next(iterator)
+            except StopIteration:
+                raise NotFoundError()
+
+            try:
+                next(iterator)
+                raise SeveralFoundError()
+            except StopIteration:
+                pass
+
+            return row[0]
+    
+
+    def get_scalars(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+        results = []
+
+        with self.cursor() as cursor:
+            self.execute_query(query, params, cursor=cursor, offset=offset, limit=limit)
+            for row in cursor:
+                results.append(row[0])
+
+        return results
+
+
+    def get_dict(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+        with self.cursor() as cursor:
+            self.execute_query(query, params, cursor=cursor, limit=limit, cursor=cursor)
+
+            iterator = iter(cursor)
+            try:
+                row = next(iterator)
+            except StopIteration:
+                raise NotFoundError()
+
+            try:
+                next(iterator)
+                raise SeveralFoundError()
+            except StopIteration:
+                pass
+
+            columns = self.get_cursor_column_names(cursor)
+            return {columns[i]: value for i, value in enumerate(row)}
+    
+
+    def get_result(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
+        cursor = self.cursor()
+        self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
+        return CursorResult(self, cursor)
+    
+
+    def iter_dicts(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):        
+        with self.cursor() as cursor:
+            self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
+            columns = self.get_cursor_column_names(cursor)
+            for row in cursor:
+                yield {columns[i]: value for i, value in enumerate(row)}
+    
+    
+    def get_dicts(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):        
+        return [row for row in self.iter_dicts(query, params, offset=offset, limit=limit)]
+    
+
+    def get_dicts_and_total(self, query: str, params: list|dict = None, *, offset: int, limit: int):        
+        paginated_query, total_query = self.get_paginated_and_total_query(query, offset=offset, limit=limit)
+
+        rows = self.get_dicts(paginated_query, params)
+        total = self.get_scalar(total_query, params)
+        return {"rows": rows, "total": total}
+
+    #endregion
+
 
     #region Tables and columns
 

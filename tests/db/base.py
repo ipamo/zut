@@ -54,7 +54,7 @@ class DbBase:
     def test_basics(self):
         self.assertEqual(1, self.db.get_scalar("SELECT 1"))
         self.assertEqual({'id': 1, 'name': 'A'}, self.db.get_dict("SELECT 1 AS id, 'A' AS name"))
-        self.assertEqual([{'id': 1, 'name': 'A'}, {'id': 99, 'name': None}], self.db.list_dicts("SELECT 1 AS id, 'A' AS name UNION SELECT 99, null"))
+        self.assertEqual([{'id': 1, 'name': 'A'}, {'id': 99, 'name': None}], self.db.get_dicts("SELECT 1 AS id, 'A' AS name UNION SELECT 99, null"))
     
 
     def test_table_exists(self):

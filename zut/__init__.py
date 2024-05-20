@@ -544,7 +544,7 @@ def dump_to_csv(out: os.PathLike|IOBase, data: Iterable[Iterable|dict], *, heade
             t.append(row)
 
 
-def get_dicts_from_csv(file: os.PathLike|IOBase, *, headers: list[str|Header] = None, encoding: str = 'utf-8', noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None):
+def iter_dicts_from_csv(file: os.PathLike|IOBase, *, headers: list[str|Header] = None, encoding: str = 'utf-8', noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None):
     """
     Iterate over CSV as dicts.
     """    
@@ -588,11 +588,11 @@ def get_dicts_from_csv(file: os.PathLike|IOBase, *, headers: list[str|Header] = 
             file.seek(0)
 
 
-def list_dicts_from_csv(file: os.PathLike|IOBase, *, headers: list[str|Header] = None, encoding: str = 'utf-8', noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None):
+def get_dicts_from_csv(file: os.PathLike|IOBase, *, headers: list[str|Header] = None, encoding: str = 'utf-8', noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None):
     """
     Load CSV as a dict list.
     """
-    return [row for row in get_dicts_from_csv(file, headers=headers, encoding=encoding, noheaders=noheaders, csv_delimiter=csv_delimiter, csv_quotechar=csv_quotechar, csv_nullval=csv_nullval)]
+    return [row for row in iter_dicts_from_csv(file, headers=headers, encoding=encoding, noheaders=noheaders, csv_delimiter=csv_delimiter, csv_quotechar=csv_quotechar, csv_nullval=csv_nullval)]
 
 
 def get_csv_headers(file: os.PathLike|IOBase, *, encoding: str = 'utf-8', csv_delimiter: str = None, csv_quotechar: str = None) -> list[Header]:
