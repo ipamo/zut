@@ -11,9 +11,8 @@ from .pg import BasePgAdapter, pg_get_logging_level
 try:
     from psycopg2 import connect, sql
     from psycopg2.extensions import connection, cursor
-    from psycopg2.sql import Composable, Composed
 
-    class Pg2Adapter(BasePgAdapter[connection, cursor, Composable, Composed]):
+    class Pg2Adapter(BasePgAdapter[connection, cursor]):
         """
         Database adapter for PostgreSQL (using `psycopg2` driver).
         """
@@ -59,13 +58,7 @@ try:
                 username=params.get('user', None),
                 password=params.get('password', None),
             )
-        
-
-        def _actual_copy(self, query, fp):
-            with self.cursor() as cursor:
-                cursor.copy_expert(query, fp)
-                return cursor.rowcount
-        
+                
 
         def register_notice_handler(self, logprefix = None, if_exists = '__raise__'):
             if self.connection.notices:

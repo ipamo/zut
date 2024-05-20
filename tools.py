@@ -55,7 +55,7 @@ def build():
     clean()
     test()
     wheel()
-    docs()
+    #NOTE: do not chain 'docs' here: __version__ would not be correct
 
 
 # -----------------------------------------------------------------------------
@@ -170,7 +170,7 @@ def publish(path: str|Path, proxy: str = None):
     _run(f'twine check {path.as_posix()}')
 
     env = {**os.environ}
-    if sys.platform != 'win32' and os.path.exists('/etc/ssl/certs/ca-certificates.crt'):
+    if not 'REQUESTS_CA_BUNDLE' in env and sys.platform != 'win32' and os.path.exists('/etc/ssl/certs/ca-certificates.crt'):
         env['REQUESTS_CA_BUNDLE'] = '/etc/ssl/certs/ca-certificates.crt'
     if proxy:
         if not proxy.startswith(('http://','https://')):

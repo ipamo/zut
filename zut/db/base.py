@@ -33,11 +33,9 @@ logger = logging.getLogger(__name__)
 
 T_Connection = TypeVar('T_Connection')
 T_Cursor = TypeVar('T_Cursor')
-T_Composable = TypeVar('T_Composable')
-T_Composed = TypeVar('T_Composed')
 
 
-class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
+class DbAdapter(Generic[T_Connection, T_Cursor]):
     """
     Base class for database adapters.
     """
@@ -324,7 +322,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         return result
     
 
-    def get_select_table_query(self, table: str|tuple = None, *, schema_only = False) -> T_Composed:
+    def get_select_table_query(self, table: str|tuple = None, *, schema_only = False) -> str:
         """
         Build a query on the given table.
 
@@ -335,23 +333,18 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         It is passed directly to the cursor's execute function for this engine.
         """
         raise NotImplementedError()
+                
 
+    def escape_identifier(self, value: str) -> str:
+        raise NotImplementedError()
+        
 
-    def _get_composable_param(self, value) -> T_Composable:
+    def escape_literal(self, value) -> str:
         if value is None:
             return "null"
-        elif value == '__now__':
-            return "CURRENT_DATETIME()"
         else:
-            return self.escape_literal(value)
-                
-
-    def escape_identifier(self, value) -> T_Composable:
-        raise NotImplementedError()
-                
-
-    def escape_literal(self, value) -> T_Composable:
-        raise NotImplementedError()
+            return f"'" + str(value).replace("'", "''") + "'"
+    
     
     #endregion
     
@@ -400,7 +393,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
                     rows = [row for row in _cursor]                    
                     row_count = len(rows)
                     if row_count > 0:
-                        columns = self.get_cursor_column_names(_cursor)
+                        columns = self.get_columns(_cursor)
 
                         if tabulate:
                             text_rows = tabulate(rows[0:10], headers=columns)
@@ -418,7 +411,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
             
             elif isinstance(results, (OutTable,IOBase,str,Path)):
                 # Write results as CSV to the given stream
-                columns = self.get_cursor_column_names(_cursor)
+                columns = self.get_columns(_cursor)
 
                 if isinstance(results, OutTable):
                     o = results
@@ -435,7 +428,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
 
             elif results:
                 # Return results as a dict list
-                columns = self.get_cursor_column_names(_cursor)
+                columns = self.get_columns(_cursor)
                 return [{columns[i]: value for i, value in enumerate(format_row(row))} for row in _cursor]
             
             else:
@@ -511,10 +504,11 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
             except StopIteration:
                 pass
 
-            columns = self.get_cursor_column_names(cursor)
+            columns = self.get_columns(cursor)
             return {columns[i]: value for i, value in enumerate(row)}
     
 
+    # TODO: default of execute_query()?
     def get_result(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):
         cursor = self.cursor()
         self.execute_query(query, params, limit=limit, offset=offset, cursor=cursor)
@@ -524,7 +518,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
     def iter_dicts(self, query: str, params: list|tuple|dict = None, *, limit: int = None, offset: int = None):        
         with self.cursor() as cursor:
             self.execute_query(query, params, limit=limit, offset=offset, cursor=cursor)
-            columns = self.get_cursor_column_names(cursor)
+            columns = self.get_columns(cursor)
             for row in cursor:
                 yield {columns[i]: value for i, value in enumerate(row)}
                 
@@ -565,65 +559,25 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
         return (schema, name)
     
 
-    def schema_exists(self, schema: str) -> bool:
-        raise NotImplementedError()
-    
-
-    def create_schema(self, schema: str):
-        raise NotImplementedError()
-    
-
-    def drop_schema(self, schema: str, cascade: bool = False):
-        raise NotImplementedError()
-    
-
     def table_exists(self, table: str|tuple = None) -> bool:
         raise NotImplementedError()
 
 
-    def get_cursor_column_names(self, cursor: T_Cursor) -> list[str]:
-        if not cursor.description:
-            raise ValueError("No cursor description available")
-        return [info[0] for info in cursor.description]
+    def get_columns(self, table_or_cursor: str|tuple|T_Cursor = None) -> list[str]:
+        if table_or_cursor is None or isinstance(table_or_cursor, (str,tuple)):
+            # table_or_cursor is assumed to be a table name (use self.table if None) 
+            query = self.get_select_table_query(table_or_cursor, schema_only=True)
+            with self.cursor() as cursor:
+                self.execute_query(query, cursor=cursor)
+                return self.get_columns(cursor)
+        else:
+            # table_or_cursor is assumed to be a cursor
+            if not table_or_cursor.description:
+                raise ValueError("No cursor description available")
+            return [info[0] for info in table_or_cursor.description]
 
 
-    def get_cursor_columns(self, cursor: T_Cursor) -> list[ColumnInfo]:
-        if not cursor.description:
-            raise ValueError("No cursor description available")
-        return [ColumnInfo(self, cursor, index) for index in range(len(cursor.description))]
-        
-
-    def get_table_column_names(self, table: str|tuple = None) -> list[str]:
-        query = self.get_select_table_query(table, schema_only=True)
-        with self.cursor() as cursor:
-            self.execute_query(query, cursor=cursor)
-            return self.get_cursor_column_names(cursor)
-        
-
-    def get_table_columns(self, table: str|tuple = None) -> list[ColumnInfo]:
-        query = self.get_select_table_query(table, schema_only=True)
-        with self.cursor() as cursor:
-            self.execute_query(query, cursor=cursor)
-            return self.get_cursor_columns(cursor)
-        
-
-    def _update_column_info(self, info: ColumnInfo, cursor: T_Cursor, index: int):
-        info.name = cursor.description[index][0]
-    
-
-    def drop_table(self, table: str|tuple = None):
-        schema, table = self.split_name(table)
-        
-        query = "DROP TABLE "
-            
-        if schema:    
-            query += f"{self.escape_identifier(schema)}."
-        query += f"{self.escape_identifier(table)}"
-
-        self.execute_query(query)
-
-
-    def truncate_table(self, table: str|tuple = None, *, cascade: bool = False):
+    def truncate_table(self, table: str|tuple = None):
         schema, table = self.split_name(table)
         
         query = "TRUNCATE TABLE "
@@ -632,14 +586,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
             query += f"{self.escape_identifier(schema)}."
         query += f"{self.escape_identifier(table)}"
 
-        if cascade:
-            query += " CASCADE"
-
         self.execute_query(query)
-
-
-    def load_from_csv(self, file: os.PathLike|IOBase, table: str|tuple = None, *, columns: list[str] = None, encoding: str = 'utf-8', merge: Literal['truncate', 'truncate-cascade', 'upsert'] = None, noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None) -> int:
-        raise NotImplementedError()
    
 
     # endregion
@@ -656,26 +603,10 @@ def _get_connection_from_wrapper(origin):
         return origin
 
 
-class ColumnInfo:
-    def __init__(self, db: DbAdapter, cursor: T_Cursor, index: int):
-        self.name = None
-        self.python_type: type = None
-        self.sql_type: str = None
-        self.sql_typecode: int = None
-        self.nullable: bool = None
-        db._update_column_info(self, cursor, index)
-
-    def __str__(self):
-        return self.name
-    
-    def __repr__(self):
-        return self.name
-
-
 class CursorResult(Generic[T_Cursor]):
     def __init__(self, db: DbAdapter, cursor: T_Cursor):
         self.cursor = cursor
-        self.columns = db.get_cursor_column_names(cursor)
+        self.columns = db.get_columns(cursor)
         self._column_indexes: dict[str, int] = None
 
     def __enter__(self):

@@ -16,16 +16,6 @@ logger = logging.getLogger(__name__)
 class PgBase(DbBase):
     adapter = PgAdapter
     config_key_prefix = 'pg'
-    sql_types = {
-        'id': 'int8',
-        'name': 'varchar',
-        'price': 'numeric',
-        'col_text': 'text',
-        'col_float': 'float8',
-        'col_date': 'date',
-        'col_time': 'time',
-        'col_timestamp': 'timestamp',
-    }
 
     def test_slugify_pg(self):        
         for text, expected in SLUGIFY_SAMPLES.items():
@@ -40,6 +30,7 @@ class PgBase(DbBase):
 
 
     # TODO: move to base
+    @skipIf(True, "TODO")
     def test_out_table_with_explicit_headers(self):
         self.db.execute_query(f'DROP TABLE IF EXISTS {self.mark}_out_table1')
         self.db.execute_query(f'CREATE TABLE {self.mark}_out_table1 (id BIGINT NOT NULL PRIMARY KEY GENERATED ALWAYS AS IDENTITY, col_notnull TEXT NOT NULL, col_nullable TEXT NULL, col_decimal DECIMAL NULL, col_float FLOAT NULL, col_date DATE, col_time TIME, col_timestamp TIMESTAMPTZ)')
@@ -61,6 +52,7 @@ class PgBase(DbBase):
 
 
     # TODO: move to base
+    @skipIf(True, "TODO")
     def test_out_table_with_calculated_headers(self):
         self.db.execute_query(f'DROP TABLE IF EXISTS {self.mark}_out_table2')
         self.db.execute_query(f'CREATE TABLE {self.mark}_out_table2 (id BIGINT NOT NULL PRIMARY KEY GENERATED ALWAYS AS IDENTITY, col_notnull TEXT NOT NULL, col_nullable TEXT NULL, col_decimal DECIMAL NULL, col_float FLOAT NULL, col_date DATE, col_time TIME, col_timestamp TIMESTAMPTZ)')

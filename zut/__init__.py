@@ -1437,7 +1437,7 @@ class OutTable(OutFile):
 
         self.headers: list[Header] = headers  # for CSV, not None <=> export started
 
-        if self.db:
+        if self.db: #TODO: adapt zut.db and csv formatting
             if tablefmt and tablefmt != 'csv':
                 raise ValueError(f"Tablefmt \"{tablefmt}\" cannot be used for a database output")
             if csv_decimal_separator and csv_decimal_separator != '.':
@@ -1914,6 +1914,7 @@ class OutTable(OutFile):
             
     def _export_db(self):                        
         logger.debug(f"Copy data to table %s.%s", self.db.schema, self.db.table)
+        #TODO
         self.out.seek(0)
         self.db.load_from_csv(self.out, columns=[header.name for header in self.headers], encoding=self.encoding, csv_delimiter=self.csv_delimiter, csv_quotechar=self.csv_quotechar, csv_nullval=self.csv_nullval)
 
@@ -1997,7 +1998,7 @@ class Header:
                     value = convert_to_datetime(value)
                 if value.year <= 1970 and (after1970 or self.fmt == 'datetime1970' or self.fmt == 'dateortime1970'):
                     value = None
-                if tablefmt and tablefmt != 'excel' and self.fmt == 'dateortime':
+                if tablefmt and tablefmt != 'excel' and (self.fmt == 'dateortime' or self.fmt == 'dateortime1970'):
                     value = value.strftime('%H:%M:%S') if value.date() == today() else value.strftime('%Y-%m-%d')
 
         elif callable(self.fmt):

@@ -9,8 +9,8 @@ from io import IOBase, TextIOWrapper
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from .. import OutTable, Literal, build_url, skip_utf8_bom, _get_csv_params
-from .base import ColumnInfo, DbAdapter
+from .. import OutTable, build_url, skip_utf8_bom
+from .base import DbAdapter
 
 logger = logging.getLogger(__name__)
 notice_logger = logging.getLogger("mssql")
@@ -18,7 +18,7 @@ notice_logger = logging.getLogger("mssql")
 try:
     from pyodbc import Connection, Cursor, connect, drivers
 
-    class MssqlAdapter(DbAdapter[Connection, Cursor, str, str]):
+    class MssqlAdapter(DbAdapter[Connection, Cursor]):
         """
         Database adapter for Microsoft SQL Server (using `pyodbc` driver).
         """
@@ -72,10 +72,6 @@ try:
                 host, port, user, dbname = next(iter(cursor))
             return build_url(scheme=self.URL_SCHEME, username=user, hostname=host, port=port, path='/'+dbname)
         
-
-        # -------------------------------------------------------------------------
-        # Execution
-        #
         
         def execute_file(self, path: str|Path, params: list|tuple|dict = None, *, cursor: Cursor = None, results: bool|TextIOWrapper|OutTable|str|Path = False, tz: tzinfo = None, limit: int = None, offset: int = None, encoding: str = 'utf-8') -> None:
             import sqlparse  # not at the top because the enduser might not need this feature
@@ -108,10 +104,6 @@ try:
                         return self.execute_query(query, params, cursor=_cursor, results=results, tz=tz, query_id=query_id, limit=limit, offset=offset)
 
 
-        # -------------------------------------------------------------------------
-        # Queries
-        #
-            
         def _paginate_parsed_query(self, selectpart: str, orderpart: str, *, limit: int|None, offset: int|None) -> str:
             if orderpart:
                 result = f"{selectpart} {orderpart} OFFSET {offset or 0} ROWS"
@@ -136,12 +128,10 @@ try:
             return query
             
 
-        def escape_identifier(self, value: str) -> str:
+        def escape_identifier(self, value: str):
+            if not isinstance(value, str):
+                raise TypeError(f"Invalid identifier: {value} (type: {type(value)})")
             return f"[{value.replace(']', ']]')}]"
-        
-
-        def escape_literal(self, value: str) -> str:
-            return f"'" + value.replace("'", "''") + "'"
 
 
         def _log_execute_messages(self, cursor: Cursor):
@@ -162,9 +152,6 @@ try:
 
                     notice_logger.log(level, f"{msg_text}")
 
-        # -------------------------------------------------------------------------
-        # Tables and columns
-        #    
 
         def table_exists(self, table: str|tuple = None) -> bool:        
             schema, table = self.split_name(table)
@@ -174,83 +161,8 @@ try:
 
             return self.get_scalar(query, params) == 1
 
-            
-        def truncate_table(self, table: str|tuple = None, *, cascade: bool = False):
-            if cascade:
-                raise ValueError("Cascade truncate is not supported by mssql.")
-            super().truncate_table(table)
-            
 
-        def _update_column_info(self, info: ColumnInfo, cursor: Cursor, index: int):
-            info.name, info.python_type, display_size, internal_size, precision, scale, info.nullable = cursor.description[index]
-
-        #endregion
-
-
-        def load_from_csv(self, file: os.PathLike, table: str|tuple = None, *, columns: list[str] = None, encoding: str = 'utf-8', merge: Literal['truncate', 'truncate-cascade', 'upsert'] = None, noheaders: bool = False, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None) -> int:
-            if isinstance(file, IOBase):
-                # TODO: use named pipes?
-                raise NotImplementedError("Cannot use IOBase file with mssql.")
-            if columns or not noheaders:
-                # TODO: compare CSV headers with columns (check consistency) + use named pipes?
-                raise NotImplementedError("Arguments 'columns' or 'noheaders' cannot be used yet.")
-
-            sche, tab = self.split_name(table)
-            tmp_tab: str = None
-            key_columns: list[str] = []
-            nonkey_target_columns: list[str] = []
-
-            _, csv_delimiter, csv_quotechar, csv_nullval = _get_csv_params(None, csv_delimiter, csv_quotechar, csv_nullval, context=file)
-            if csv_nullval != '':
-                raise ValueError(f"Invalid csv nullval for mssql: \"{csv_nullval}\"")
-
-            try:
-                if merge in ['truncate', 'truncate-cascade']:                
-                    self.truncate_table((sche, tab), cascade=merge == 'truncate-cascade')
-
-                elif merge == 'upsert':
-                    raise NotImplementedError("Cannot use 'upsert' yet") #TODO
-
-                # Prepare actual copy operation
-                sql = f"BULK INSERT "
-                    
-                if tmp_tab:
-                    sql += f"{self.escape_identifier(tmp_tab)}"
-                else:    
-                    if sche:    
-                        sql +=f"{self.escape_identifier(sche)}."
-                    sql += f"{self.escape_identifier(tab)}"
-
-                sql += f" FROM {self.escape_literal(os.path.abspath(file))}"
-                sql += f' WITH ('
-                sql += f' CODEPAGE = {self.escape_literal('utf-8' if encoding == 'utf-8-sig' else encoding)}'
-                sql += f', FIELDTERMINATOR = {self.escape_literal(csv_delimiter)}'
-                sql += f', FIELDQUOTE = {self.escape_literal(csv_quotechar)}'
-                if csv_nullval == '':
-                    sql += f', KEEPNULLS'
-                sql += ")"
-
-                if tmp_tab:
-                    logger.debug("Actual copy from %s to %s", file, tmp_tab)
-                
-                #TODO: skip_utf8_bom(fp)
-                with self.cursor() as cursor:
-                    self.execute_query(sql)
-                    result_count = cursor.rowcount
-                
-                # Upsert from tmp table if necessary
-                if tmp_tab:
-                    pass #TODO
-
-                return result_count
-
-            finally:
-                if tmp_tab:
-                    self.execute_query(f"DROP TABLE IF EXISTS {self.escape_identifier(tmp_tab)}")
-
-
-
-except ImportError:  
+except ImportError:
 
     class MssqlAdapter(DbAdapter):
         """
