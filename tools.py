@@ -54,8 +54,8 @@ def command(handle = None):
 def build():
     clean()
     test()
-    docs()
     wheel()
+    docs()
 
 
 # -----------------------------------------------------------------------------
