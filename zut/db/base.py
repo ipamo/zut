@@ -499,7 +499,7 @@ class DbAdapter(Generic[T_Connection, T_Cursor, T_Composable, T_Composed]):
 
     def get_dict(self, query: str, params: list|tuple|dict = None, *, offset: int = None, limit: int = None):
         with self.cursor() as cursor:
-            self.execute_query(query, params, cursor=cursor, limit=limit, cursor=cursor)
+            self.execute_query(query, params, offset=offset, limit=limit, cursor=cursor)
 
             iterator = iter(cursor)
             try:

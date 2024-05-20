@@ -2055,7 +2055,14 @@ class Color:
 #endregion
 
 
-#region Subprocesses
+#region Errors
+
+class MessageError(ValueError):
+    """
+    An error that should result to only an error message being printed on the console, without a stack trace.
+    """
+    pass
+
 
 def check_completed_subprocess(cp: CompletedProcess, logger: logging.Logger = None, *, label: str = None, level: int|str = None, accept_returncode: int|list[int]|bool = False, accept_stdout: bool = False, accept_stderr: bool = False, maxlen: int = 200):
     """
@@ -2236,6 +2243,31 @@ def get_description_text(docstring: str):
         return None
     
     return dedent(docstring)
+
+
+def get_exit_code(return_value: Any) -> int:
+    if not isinstance(return_value, int):
+        return_value = 0 if return_value is None or return_value is True else 1
+    return return_value
+
+
+def exec_command(handle: Callable, args: dict):
+    if not handle:
+        logger.error("No command given")
+        return 1
+
+    try:
+        r = handle(**args)
+        r = get_exit_code(r)
+    except MessageError as err:
+        logger.error(str(err))
+        r = 1
+    except BaseException as err: # including KeyboardInterrupt
+        message = str(err)
+        logger.exception(f"Exiting on {type(err).__name__}{f': {message}' if message else ''}")
+        r = 1
+
+    sys.exit(r)
 
 
 #endregion
