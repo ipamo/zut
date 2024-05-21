@@ -849,12 +849,16 @@ def now_aware(tz: tzinfo|str = None, *, ms = True):
     return now
 
 
-def make_aware(value: T_WithTime, tz: tzinfo|str = None) -> T_WithTime:
+def make_aware(value: T_WithTime, tz: tzinfo|str = None, after1970: bool = False) -> T_WithTime:
     """
     Make a datetime aware in timezone `tz` (use `tz=None` or `tz='localtime'` for the system local timezone).
     """
     if value is None:
         return None
+
+    if after1970 and value.year <= 1970:
+        return None
+    
     if is_aware(value):
         raise ValueError("make_aware expects a naive datetime, got %s" % value)
     
@@ -870,12 +874,16 @@ def is_naive(value: T_WithTime):
     return not is_aware(value)
 
 
-def make_naive(value: T_WithTime, tz: tzinfo = None) -> T_WithTime:
+def make_naive(value: T_WithTime, tz: tzinfo = None, after1970: bool = False) -> T_WithTime:
     """
     Make a datetime naive and expressed in timezone `tz` (use `tz=None` or `tz='localtime'` for the system local timezone).
     """
     if value is None:
         return None
+
+    if after1970 and value.year <= 1970:
+        return None
+
     if not is_aware(value):
         raise ValueError("make_naive expects an aware datetime, got %s" % value)
     

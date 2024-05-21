@@ -33,7 +33,7 @@ def is_excel_path(path: str|Path, accept_table_suffix = False):
     if isinstance(path, Path):
         path = str(path)
     elif not isinstance(path, str):
-        raise ValueError(f'invalid path type: {type(path)}')
+        raise ValueError(f'Invalid path type: {type(path)}')
     
     return re.search(r'\.xlsx(?:#[^\.]+)?$' if accept_table_suffix else r'\.xlsx$', path, re.IGNORECASE)
 
@@ -43,7 +43,7 @@ def split_excel_path(path: str|Path, default_table_name: str = None, **kwargs) -
     if isinstance(path, Path):
         path = str(path)
     elif not isinstance(path, str):
-        raise ValueError(f'invalid path type: {type(path)}')
+        raise ValueError(f'Invalid path type: {type(path)}')
         
     path = path.format(**kwargs)
 
@@ -71,12 +71,12 @@ class ExcelWorkbook:
         self.path = Path(path) if not isinstance(path, Path) else path
 
         if files.exists(self.path):
-            logger.debug("load excel workbook %s", self.path)
+            logger.debug("Load excel workbook %s", self.path)
             with files.open(self.path, 'rb') as fp:
                 self.pyxl_workbook: Workbook = load_workbook(fp) #NOTE: using keep_vba=True causes issues, example on openpyxl 3.1.2: load and save samples/empty-table.xlsx without modification corrupts the file
             self._create_next_table_in_active_sheet = False
         else:
-            logger.debug("create excel workbook for %s", self.path)
+            logger.debug("Create excel workbook for %s", self.path)
             self.pyxl_workbook = Workbook()
             self._create_next_table_in_active_sheet = True
 
@@ -108,13 +108,13 @@ class ExcelWorkbook:
 
     def close(self):
         if not self.needs_save:
-            logger.debug("excel workbook %s not modified", self.path)
+            logger.debug("Excel workbook %s not modified", self.path)
             return
         
         for table in self.tables.values():
             table.redefine()
         
-        logger.debug("save excel workbook %s", self.path)
+        logger.debug("Save excel workbook %s", self.path)
         with files.open(self.path, 'wb') as fp:
             self.pyxl_workbook.save(fp)
 
@@ -133,7 +133,7 @@ class ExcelWorkbook:
                 return self.tables[name]
             
         if default == '__raise__':
-            raise KeyError(f"no table found with name \"{name}\" in workbook \"{self.path}\"")
+            raise KeyError(f"No table found with name \"{name}\" in workbook \"{self.path}\"")
         else:
             return default
         
@@ -142,7 +142,7 @@ class ExcelWorkbook:
         for sheet_name in self.pyxl_workbook.sheetnames:
             pyxl_worksheet: Worksheet = self.pyxl_workbook[sheet_name]
             if name in pyxl_worksheet.tables:
-                raise ValueError(f"table {name} already exist")
+                raise ValueError(f"Table {name} already exist")
     
         self.needs_save = True
         
@@ -162,8 +162,7 @@ class ExcelWorkbook:
         if table is None:
             table = self.create_table(name, no_headers)
         return table
-    
-    # defined names
+
 
     def get_global_named_values(self, name: str) -> list:
         defn = self.pyxl_workbook.defined_names[name]
@@ -177,13 +176,14 @@ class ExcelWorkbook:
 
         return values
 
+
     def get_global_named_value(self, name: str) -> Any:
         values = self.get_global_named_values(name)
         
         if len(values) > 1:
-            raise ValueError(f"more than one cell")
+            raise ValueError(f"More than one cell")
         elif len(values) == 0:
-            raise ValueError(f"global name not found")
+            raise ValueError(f"Global name not found")
         else:
             return values[0]
 
@@ -237,7 +237,7 @@ class ExcelTable:
                 self.has_headers = True
                 self.min_row_index = min_row
             else:
-                raise ValueError(f'invalid headerRowCount: {pyxl_table.headerRowCount}')
+                raise ValueError(f'Invalid headerRowCount: {pyxl_table.headerRowCount}')
             
             self.row_count = max_row - self.min_row_index
             col_count = max_col - self.min_col_index
@@ -245,7 +245,7 @@ class ExcelTable:
             self.column_names: list[str] = list(self.pyxl_table.column_names)
             # NOTE: if no headers, default names are returned, example in French: ['Colonne1', 'Colonne2']
             if len(self.column_names) != col_count:
-                raise ValueError(f'invalid column_names length ({len(self.column_names)}, expected {col_count}): {self.column_names}')
+                raise ValueError(f'Invalid column_names length ({len(self.column_names)}, expected {col_count}): {self.column_names}')
             
             self._column_indexes = {}
             for i, name in enumerate(self.column_names):                
@@ -254,7 +254,7 @@ class ExcelTable:
             if self.row_count == 1 and self.is_row_empty(0):
                 self.row_count = 0
         else:
-            raise ValueError(f"invalid type for pyxl_table: {type(pyxl_table).__name__}")
+            raise ValueError(f"Invalid type for pyxl_table: {type(pyxl_table).__name__}")
 
         self._column_formats: list[dict[str,Any]] = None
     
@@ -265,9 +265,9 @@ class ExcelTable:
     @property
     def ref(self) -> str:
         if self.col_count == 0:
-            raise ValueError(f"cannot get table ref: table does not contain any column")
+            raise ValueError(f"Cannot get table ref: table does not contain any column")
         if self.row_count == 0:
-            raise ValueError(f"cannot get table ref: table does not contain any row")
+            raise ValueError(f"Cannot get table ref: table does not contain any row")
                 
         return f"{get_column_letter(self.min_col_index + 1)}{self.min_row_index - (1 if self.has_headers else 0) + 1}:{get_column_letter(self.min_col_index + self.col_count)}{self.min_row_index + self.row_count}"
 
@@ -278,13 +278,13 @@ class ExcelTable:
         """
         if index == -1:
             if self.row_count == 0:
-                raise ValueError(f"cannot get last row: table does not contain any row")
+                raise ValueError(f"Cannot get last row: table does not contain any row")
             index = self.row_count - 1
         elif index < 0:
-            raise ValueError(f"invalid row index: {index}")
+            raise ValueError(f"Invalid row index: {index}")
         
         if index >= self.row_count:
-            raise ValueError(f"cannot get row at index {index}: table contains {self.row_count} rows")
+            raise ValueError(f"Cannot get row at index {index}: table contains {self.row_count} rows")
 
         return ExcelRow(self, index, readonly=readonly)
     
@@ -312,7 +312,7 @@ class ExcelTable:
         row_index = self.row_count
 
         if not self.is_row_empty(row_index):
-            raise ValueError(f'cannot insert row: row at index {row_index} is not empty')
+            raise ValueError(f'Cannot insert row: row at index {row_index} is not empty')
 
         self.row_count += 1
 
@@ -326,14 +326,14 @@ class ExcelTable:
     def insert_col(self, name: str):
         self.workbook.needs_save = True
         if not name:
-            raise ValueError(f'name cannot be empty')
+            raise ValueError(f'Name cannot be empty')
         if name in self.column_names:
-            raise ValueError(f'column name already used: {name}')
+            raise ValueError(f'Column name already used: {name}')
             
         col_index = self.col_count
 
         if not self.is_col_empty(col_index):
-            raise ValueError(f'cannot insert column: column {col_index} is not empty')
+            raise ValueError(f'Cannot insert column: column {col_index} is not empty')
 
         self.column_names.append(name) # implies self.col_count += 1
         self._column_indexes[name] = self.col_count - 1
@@ -369,7 +369,7 @@ class ExcelTable:
         if self.pyxl_table is not None and new_ref == self.pyxl_table.ref:
             return
         
-        logger.debug("define table %s: %s => %s", self.name, self.pyxl_table.ref if self.pyxl_table is not None else None, new_ref)
+        logger.debug("Define table %s: %s => %s", self.name, self.pyxl_table.ref if self.pyxl_table is not None else None, new_ref)
 
         newcolumns = []
 
@@ -448,9 +448,9 @@ class ExcelTable:
             col_index = self.col_count - 1
 
         if row_index < 0 or row_index >= self.row_count:
-            raise ValueError(f"invalid row index: {row_index} (row count: {self.row_count})")
+            raise ValueError(f"Invalid row index: {row_index} (row count: {self.row_count})")
         if col_index < 0 or col_index >= self.col_count:
-            raise ValueError(f"invalid row index: {col_index} (row count: {self.col_count})")
+            raise ValueError(f"Invalid row index: {col_index} (row count: {self.col_count})")
 
 
     def erase_cell(self, row_index: int, col_index: int, allow_outside: bool = False):
@@ -623,11 +623,17 @@ class ExcelRow:
 
     def __setitem__(self, key: int|str, value):
         if not isinstance(key, int):
+            if not key in self.table._column_indexes:
+                self.table.insert_col(key)
             key = self.table._column_indexes[key]
 
         if self._values is None:
             self._values = [ _UNSET ] * self.table.col_count
             self._must_refresh = {index: True for index in range(0, self.table.col_count)}
+        else:
+            for index in range(len(self._values), key+1):
+                self._values.append(_UNSET)
+                self._must_refresh[index] = True
 
         self._values[key] = value
         if self._must_refresh is not None:
