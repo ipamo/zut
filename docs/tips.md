@@ -33,16 +33,16 @@ Start test databases using Docker:
 
 - MssqlAdapter :
     
-    docker run -d --rm --name zut-tests-mssql -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=testmeZ0 -e MARIADB_DATABASE=test_zut -p 127.0.0.1:1433:1433 mcr.microsoft.com/mssql/server:2022-latest
+    docker run -d --rm --name zut-tests-mssql -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=testmeZ0 -e MARIADB_DATABASE=test_zut -e TZ=Europe/Paris -p 127.0.0.1:1433:1433 mcr.microsoft.com/mssql/server:2022-latest
     docker exec -it zut-tests-mssql /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P testmeZ0 -Q "CREATE DATABASE TestZut"
 
 - MysqlAdapter :
     
-    docker run -d --rm --name zut-tests-mysql -e MARIADB_ROOT_PASSWORD=testmeZ0 -e MARIADB_DATABASE=test_zut -p 127.0.0.1:3306:3306 mariadb
+    docker run -d --rm --name zut-tests-mysql -e MARIADB_ROOT_PASSWORD=testmeZ0 -e MARIADB_DATABASE=test_zut -e TZ=Europe/Paris -p 127.0.0.1:3306:3306 mariadb
 
 - PgAdapter :
     
-    docker run -d --rm --name zut-tests-pg -e POSTGRES_PASSWORD=testmeZ0 -e POSTGRES_DB=test_zut -p 127.0.0.1:5432:5432 postgres
+    docker run -d --rm --name zut-tests-pg -e POSTGRES_PASSWORD=testmeZ0 -e POSTGRES_DB=test_zut -e TZ=Europe/Paris -p 127.0.0.1:5432:5432 postgres
 
 Run tests:
 
