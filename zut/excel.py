@@ -621,6 +621,13 @@ class ExcelRow:
             return self._values[key]
         
 
+    def get(self, key: str, default = None):
+        if key in self.table.column_names:
+            return self[key]
+        else:
+            return default
+           
+
     def __setitem__(self, key: int|str, value):
         if not isinstance(key, int):
             if not key in self.table._column_indexes:
