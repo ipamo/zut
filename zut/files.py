@@ -327,13 +327,12 @@ def copytree(src: str, dst: str, symlinks: bool = False, ignore: Callable[[str, 
     return smbclient_shutil.copytree(src, dst, symlinks=symlinks, ignore=ignore, ignore_dangling_symlinks=ignore_dangling_symlinks, dirs_exist_ok=dirs_exist_ok)
 
 
-def archivate(path: str|Path, target: str|Path = None, *, missing_ok: bool = False) -> str:
+def archivate(path: str|Path, target: str|Path = None, *, missing_ok: bool = False, keep: bool = False) -> str:
     """
-    Copy `path` to `target` directory, ensuring unique subdir name.
+    Archivate `path` to `target` directory, ensuring unique archive name.
     """
     if isinstance(path, Path):
         path = str(path)
-
 
     if missing_ok:
         if not path or not exists(path):
@@ -364,4 +363,6 @@ def archivate(path: str|Path, target: str|Path = None, *, missing_ok: bool = Fal
 
     logger.info(f"Archivate {path} to {archive}")
     copy2(path, archive)
+    if not keep:
+        remove(path)
     return archive

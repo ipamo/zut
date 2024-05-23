@@ -1355,7 +1355,7 @@ class OutFile:
         return self
             
     
-    def __exit__(self, exc_type = None, exc_val = None, exc_tb = None):        
+    def __exit__(self, exc_type = None, exc_value = None, exc_traceback = None):
         if not self.atexit:
             self.close()
 
@@ -1801,8 +1801,9 @@ class OutTable(OutFile):
             result = tabulate(rows, headers=self.headers, floatfmt=tuple(floatfmts))
         else:
             result = tabulate(rows)
-        
-        print(result, file=self.file)
+
+        for line in result.splitlines():
+            print(line, file=self.file)
 
 
     def _escape_tabulate_value(self, value: str, *, header: Header|None):
@@ -1922,7 +1923,7 @@ class OutTable(OutFile):
             
     def _export_db(self):                        
         logger.debug(f"Copy data to table %s.%s", self.db.schema, self.db.table)
-        #TODO
+        raise NotImplementedError("TODO")
         self.out.seek(0)
         self.db.load_from_csv(self.out, columns=[header.name for header in self.headers], encoding=self.encoding, csv_delimiter=self.csv_delimiter, csv_quotechar=self.csv_quotechar, csv_nullval=self.csv_nullval)
 
