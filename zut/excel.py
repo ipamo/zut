@@ -4,6 +4,7 @@ Manipulate Excel tables.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from configparser import _UNSET
 from pathlib import Path
@@ -29,7 +30,7 @@ from . import files
 logger = logging.getLogger(__name__)
 
 
-def is_excel_path(path: str|Path, accept_table_suffix = False):
+def is_excel_path(path: str|Path, *, accept_table_suffix = False):
     if isinstance(path, Path):
         path = str(path)
     elif not isinstance(path, str):
@@ -38,7 +39,7 @@ def is_excel_path(path: str|Path, accept_table_suffix = False):
     return re.search(r'\.xlsx(?:#[^\.]+)?$' if accept_table_suffix else r'\.xlsx$', path, re.IGNORECASE)
 
 
-def split_excel_path(path: str|Path, default_table_name: str = None, **kwargs) -> tuple[Path,str]:
+def split_excel_path(path: str|Path, *, default_table_name: str = None, dir: str|Path = None, **kwargs) -> tuple[Path,str]:
     """ Return (actual path, table name) """
     if isinstance(path, Path):
         path = str(path)
@@ -51,7 +52,11 @@ def split_excel_path(path: str|Path, default_table_name: str = None, **kwargs) -
     if not m:
         return (Path(path), default_table_name)
     
-    return (Path(m[1]), m[2] if m[2] else default_table_name)
+    path = m[1]    
+    if dir and not path.startswith(('./','.\\')):
+        path = os.path.join(dir, path)
+    
+    return (Path(path), m[2] if m[2] else default_table_name)
 
 
 class ExcelWorkbook:
@@ -121,17 +126,28 @@ class ExcelWorkbook:
         self.needs_save = False
         
 
-    def get_table(self, name: str, default = '__raise__') -> ExcelTable:
-        if name in self.tables:
-            return self.tables[name]
-        
-        for sheet_name in self.pyxl_workbook.sheetnames:
-            pyxl_worksheet: Worksheet = self.pyxl_workbook[sheet_name]
-            if name in pyxl_worksheet.tables:
-                pyxl_table = pyxl_worksheet.tables[name]
-                self.tables[name] = ExcelTable(pyxl_table, pyxl_worksheet, self)
+    def get_table(self, name: str|None = None, default = '__raise__') -> ExcelTable:
+        if name is None: # Search the name of the table (if there is only one table in the file)
+            for sheet_name in self.pyxl_workbook.sheetnames:
+                pyxl_worksheet: Worksheet = self.pyxl_workbook[sheet_name]
+                for a_name in pyxl_worksheet.tables:
+                    if name is not None:
+                        raise ValueError(f"Several tables found in workbook \"{self.path}\"")
+                    else:
+                        name = a_name
+
+        if name is not None:
+            if name in self.tables:
                 return self.tables[name]
             
+            for sheet_name in self.pyxl_workbook.sheetnames:
+                pyxl_worksheet: Worksheet = self.pyxl_workbook[sheet_name]
+                if name in pyxl_worksheet.tables:
+                    pyxl_table = pyxl_worksheet.tables[name]
+                    self.tables[name] = ExcelTable(pyxl_table, pyxl_worksheet, self)
+                    return self.tables[name]
+
+        # Case when no table is found            
         if default == '__raise__':
             raise KeyError(f"No table found with name \"{name}\" in workbook \"{self.path}\"")
         else:
