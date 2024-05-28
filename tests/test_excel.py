@@ -9,9 +9,9 @@ from tests import RESULTS_DIR, SAMPLES_DIR
 
 class Case(TestCase):
     def test_split_excel_path(self):
-        self.assertEqual((Path('path.xlsx'), 'table'), split_excel_path('path.xlsx#table'))
-        self.assertEqual((Path('path.xlsx'), None), split_excel_path('path.xlsx'))
-        self.assertEqual((Path('path'), None), split_excel_path('path'))
+        self.assertEqual(('path.xlsx', 'table'), split_excel_path('path.xlsx#table'))
+        self.assertEqual(('path.xlsx', None), split_excel_path('path.xlsx'))
+        self.assertEqual(('path', None), split_excel_path('path'))
 
     @skipIf(not openpyxl, "openpyxl not available")
     def test_sample(self):

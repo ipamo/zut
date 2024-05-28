@@ -39,7 +39,7 @@ def is_excel_path(path: str|Path, *, accept_table_suffix = False):
     return re.search(r'\.xlsx(?:#[^\.]+)?$' if accept_table_suffix else r'\.xlsx$', path, re.IGNORECASE)
 
 
-def split_excel_path(path: str|Path, *, default_table_name: str = None, dir: str|Path = None, **kwargs) -> tuple[Path,str]:
+def split_excel_path(path: str|Path, *, default_table_name: str = None, dir: str|Path = None, **kwargs) -> tuple[str,str]: #TODO: usage
     """ Return (actual path, table name) """
     if isinstance(path, Path):
         path = str(path)
@@ -50,13 +50,13 @@ def split_excel_path(path: str|Path, *, default_table_name: str = None, dir: str
 
     m = re.match(r'^(.+\.xlsx)(?:#([^\.]*))?$', path, re.IGNORECASE)
     if not m:
-        return (Path(path), default_table_name)
+        return (path, default_table_name)
     
     path = m[1]    
     if dir and not path.startswith(('./','.\\')):
-        path = os.path.join(dir, path)
+        path = files.join(dir, path)
     
-    return (Path(path), m[2] if m[2] else default_table_name)
+    return (path, m[2] if m[2] else default_table_name)
 
 
 class ExcelWorkbook:
@@ -73,7 +73,7 @@ class ExcelWorkbook:
             logger.warning("Install package `defusedxml` (in addition to `openpyxl`) to guard against quadratic blowup or billion laughs xml attacks")
             self.__class__._defusedxml_alert_emitted = True
 
-        self.path = Path(path) if not isinstance(path, Path) else path
+        self.path = str(path) if not isinstance(path, str) else path #TODO: usage
 
         if files.exists(self.path):
             logger.debug("Load excel workbook %s", self.path)
