@@ -1265,7 +1265,8 @@ class ApiClientError(Exception):
 #region Output
 
 def normalize_out(out: str|Path|IOBase|DbAdapter|Literal[False]|None, *, dir: str|Path|None = None, **params) -> str|IOBase|DbAdapter|None:
-    from zut.db import DbAdapter, get_db_adapter
+    from zut.db import DbAdapter, get_db_adapter    
+    from zut import files
 
     if out is None or out == 'stdout':
         return sys.stdout
@@ -1290,7 +1291,7 @@ def normalize_out(out: str|Path|IOBase|DbAdapter|Literal[False]|None, *, dir: st
             return get_db_adapter(out)
 
         if dir and not out.startswith(('./', '.\\')):
-            out = os.path.join(str(dir), out)
+            out = files.join(str(dir), out)
         return os.path.expanduser(out)
     elif isinstance(out, DbAdapter):
         return out

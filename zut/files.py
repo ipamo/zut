@@ -72,7 +72,29 @@ def basename(path: str):
         return os.path.basename(path)
 
     return ntpath.basename(path)
-    
+
+
+def join(*paths: str):
+    remaining_paths = []
+    method = 'os'
+    for path in paths:
+        path = os.path.expanduser(path)
+        if isinstance(path, str) and (path.startswith("//") or '://' in path):
+            remaining_paths = [path]
+            method = 'custom'
+        elif isinstance(path, str) and (path.startswith('\\\\')):
+            remaining_paths = [path]
+            method = 'nt'
+        else:
+            remaining_paths.append(path)
+
+    if method == 'os':
+        return os.path.join(*remaining_paths)
+    elif method == 'nt':
+        return ntpath.join(*remaining_paths)
+    else:
+        return '/'.join(remaining_paths)
+
 
 def splitext(path: str):
     path, use_native = _standardize(path)

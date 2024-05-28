@@ -1,10 +1,19 @@
 from __future__ import annotations
+import os
 from unittest import TestCase, skipIf
 from time import sleep
 from zut import files
 from tests import RESULTS_DIR, SMB_RESULTS_DIR
 
 class Case(TestCase):
+    def test_join(self):
+        self.assertEqual(f"a{os.sep}b", files.join("a", "b"))
+        self.assertEqual(f"/usr", files.join("a", "/usr"))
+        self.assertEqual(r"\\b\c", files.join("a", r"\\b", "c"))
+        self.assertEqual(f"http://host/a", files.join("http://host", "a"))
+        self.assertEqual(f"http://host", files.join("a", "http://host"))
+
+
     def test_copy_local(self):
         self._do(
             func=files.copy,
