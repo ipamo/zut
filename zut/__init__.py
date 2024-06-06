@@ -321,6 +321,59 @@ class Filters:
                     return True
                 
         return False
+    
+
+_to_erase: list[int] = []
+
+def write_live(text: str, newline=False):
+    """
+    Write text to stdout, keeping track of what was written, so that it can be erased next time.
+
+    Text lines are stripped to terminal column length.
+    """
+    erase_live()    
+    columns, _ = os.get_terminal_size()
+
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        line = line.rstrip()
+        
+        nb_chars = len(line)
+        if nb_chars > columns:
+            line = line[:columns-1] + '…'
+            nb_chars = columns
+
+        _to_erase.insert(0, nb_chars)
+
+        sys.stdout.write(line)
+        if newline or i < len(lines) - 1:
+            sys.stdout.write('\n')
+
+    if newline:
+        _to_erase.insert(0, 0)
+    
+    sys.stdout.flush()
+
+
+def erase_live():
+    """
+    Erase text written using :func:`write_live`.
+
+    Text lines are stripped to terminal column length.
+    """
+    if not _to_erase:
+        return
+    
+    for i, nb_chars in enumerate(_to_erase):
+        if i == 0:
+            sys.stdout.write('\r') # move to beginning of line
+        else:
+            sys.stdout.write('\033[F') # move to beginning of previous line
+        sys.stdout.write(' ' * nb_chars)
+    sys.stdout.write('\r')
+
+    _to_erase.clear()
+
 
 #endregion
 
@@ -1304,9 +1357,9 @@ def out_file(out: str|Path|IOBase|Literal[False] = None, *, title: str|Literal[F
     return OutFile(out, title=title, append=append, encoding=encoding, atexit=atexit)
 
 
-def out_table(out: str|Path|IOBase|DbAdapter|Literal[False] = None, *, headers: list[Header|str] = None, tablefmt: Literal['csv','csv-excel','tabulate','excel'] = None, csv_decimal_separator: str = None, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None, tz: tzinfo|str|Literal['localtime']|None = None, after1970: bool = None, title: str|Literal[False] = None, dir: str|Path|None = None, append: bool = False, encoding: str = 'utf-8-sig', atexit: bool|Callable = None, **params):
+def out_table(out: str|Path|IOBase|DbAdapter|Literal[False] = None, *, headers: list[Header|str] = None, tablefmt: Literal['csv','csv-excel','tabulate','excel'] = None, intfmt: str = None, floatfmt: str = None, csv_decimal_separator: str = None, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None, tz: tzinfo|str|Literal['localtime']|None = None, after1970: bool = None, title: str|Literal[False] = None, dir: str|Path|None = None, append: bool = False, encoding: str = 'utf-8-sig', atexit: bool|Callable = None, **params):
     out = normalize_out(out, title=title, dir=dir, **params)
-    return OutTable(out, headers=headers, tablefmt=tablefmt, csv_decimal_separator=csv_decimal_separator, csv_delimiter=csv_delimiter, csv_quotechar=csv_quotechar, csv_nullval=csv_nullval, tz=tz, after1970=after1970, title=title, append=append, encoding=encoding, atexit=atexit)
+    return OutTable(out, headers=headers, tablefmt=tablefmt, intfmt=intfmt, floatfmt=floatfmt, csv_decimal_separator=csv_decimal_separator, csv_delimiter=csv_delimiter, csv_quotechar=csv_quotechar, csv_nullval=csv_nullval, tz=tz, after1970=after1970, title=title, append=append, encoding=encoding, atexit=atexit)
 
 
 class OutFile:
@@ -1365,9 +1418,10 @@ class OutFile:
     def file(self):
         if self._file is None:
             if not self.out:
-                return None
+                self._file = open(os.devnull, 'w')
+                self._must_close_file = True
                 
-            if isinstance(self.out, IOBase):
+            elif isinstance(self.out, IOBase):
                 self._file = self.out
                 self._must_close_file = False
         
@@ -1428,7 +1482,7 @@ class OutTable(OutFile):
     DEFAULT_CSV_FMT = 'csv'
     DEFAULT_AFTER1970 = False
 
-    def __init__(self, out: str|Path|IOBase|DbAdapter|Literal[False], *, headers: list[Header|str] = None, title: str|Literal[False] = None, tablefmt: Literal['csv','csv-excel','tabulate','excel'] = None, csv_decimal_separator: str = None, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None, tz: tzinfo|str|Literal['localtime']|None = None, after1970: bool = None, append: bool = False, encoding: str = 'utf-8-sig', atexit: bool|Callable = None):
+    def __init__(self, out: str|Path|IOBase|DbAdapter|Literal[False], *, headers: list[Header|str] = None, title: str|Literal[False] = None, tablefmt: Literal['csv','csv-excel','tabulate','excel'] = None, intfmt: str = None, floatfmt: str = None, csv_decimal_separator: str = None, csv_delimiter: str = None, csv_quotechar: str = None, csv_nullval: str = None, tz: tzinfo|str|Literal['localtime']|None = None, after1970: bool = None, append: bool = False, encoding: str = 'utf-8-sig', atexit: bool|Callable = None):
         from zut.db import DbAdapter
 
         if isinstance(out, DbAdapter):
@@ -1481,6 +1535,9 @@ class OutTable(OutFile):
             self.csv_decimal_separator, self.csv_delimiter, self.csv_quotechar, self.csv_nullval = _get_csv_params(csv_decimal_separator, csv_delimiter, csv_quotechar, csv_nullval, context=self.tablefmt)
             
             self._csv_need_newline = False
+
+        self.intfmt = intfmt
+        self.floatfmt = floatfmt
 
         self.row_count = 0
         self._prepared_row_count = 0
@@ -1639,10 +1696,18 @@ class OutTable(OutFile):
                 return 'true' if value else 'false'
             return value
 
+        elif isinstance(value, int):
+            if self.tablefmt.startswith('csv'):
+                if self.intfmt:
+                    value = format(value, self.intfmt)
+            return value
+
         elif isinstance(value, (Decimal,float)):
             if self.tablefmt.startswith('csv'):
                 if header:
-                    value = format(value, header._get_csv_floatfmt())
+                    floatfmt = header._get_csv_floatfmt() or self.floatfmt
+                    if floatfmt:
+                        value = format(value, floatfmt)
                 if self.csv_decimal_separator != '.':
                     value = str(value).replace('.', self.csv_decimal_separator)
             return value
@@ -1796,10 +1861,13 @@ class OutTable(OutFile):
             rows.append(prepared_row)
         
         if self.headers:
+            intfmts = []
             floatfmts = []
             for header in self.headers:
-                floatfmts.append(header._get_tabulate_floatfmt())
-            result = tabulate(rows, headers=self.headers, floatfmt=tuple(floatfmts))
+                intfmts.append(self.intfmt or 'n')
+                floatfmt = header._get_tabulate_floatfmt() or self.floatfmt
+                floatfmts.append(floatfmt or 'n')
+            result = tabulate(rows, headers=self.headers, intfmts=tuple(intfmts), floatfmt=tuple(floatfmts))
         else:
             result = tabulate(rows)
 
@@ -1966,13 +2034,13 @@ class Header:
         elif self.fmt in ['kib']:
             return '.3f'
         else:
-            return 'g'
+            return None
     
     def _get_tabulate_floatfmt(self):
         if self.fmt in ['gib', 'mib', 'kib']:
             return '.2f'
         else:
-            return 'g'
+            return None
         
     def convert(self, value, *, tablefmt: str = None, after1970: bool = False):
         if value is None:
