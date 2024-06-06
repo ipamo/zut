@@ -14,6 +14,7 @@ import logging.config
 import os
 import re
 import socket
+import ssl
 import sys
 import unicodedata
 from argparse import ArgumentParser, RawTextHelpFormatter, _SubParsersAction
@@ -1122,10 +1123,17 @@ class JSONApiClient:
     
     nonjson_error_maxlen = 400
 
+    no_ssl_verify = False
+
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs) # necessary to allow this class to be used as a mixin
         self.logger = logging.getLogger(type(self).__module__ + '.' + type(self).__name__)
+        self._ssl_context = None
+        if self.no_ssl_verify or kwargs.get('no_ssl_verify'):
+            self._ssl_context = ssl.create_default_context()
+            self._ssl_context.check_hostname = False
+            self._ssl_context.verify_mode = ssl.CERT_NONE
 
 
     def __enter__(self):
@@ -1197,7 +1205,7 @@ class JSONApiClient:
         response_headers = {}
         try:
             response: HTTPResponse
-            with urlopen(request, timeout=self.timeout) as response:
+            with urlopen(request, timeout=self.timeout, context=self._ssl_context) as response:
                 response_headers = response.headers
                 if self.logger.isEnabledFor(logging.DEBUG):
                     content_type = response.headers.get('content-type', '-')
